@@ -37,7 +37,9 @@ function LiveChordRecognizer() {
   const [current, setCurrent] = useState<ChordDetectResult | null>(null);
   const [history, setHistory] = useState<ChordEntry[]>([]);
   const startRef = useRef(0);
-  const lastChordRef = useRef('');
+  const lastPushedChordRef = useRef('');
+  const candidateChordRef = useRef('');
+  const stableCountRef = useRef(0);
 
   const toggle = useCallback(async () => {
     if (listening) {
@@ -47,19 +49,41 @@ function LiveChordRecognizer() {
     }
     setCurrent(null);
     setHistory([]);
-    lastChordRef.current = '';
+    lastPushedChordRef.current = '';
+    candidateChordRef.current = '';
+    stableCountRef.current = 0;
     startRef.current = Date.now();
     try {
       await chordDetector.start((r) => {
         setCurrent(r);
-        if (r?.chord && r.chord.name !== lastChordRef.current && r.confidence >= 0.5) {
-          lastChordRef.current = r.chord.name;
-          vibrate(10);
-          setHistory(h => [...h, {
-            name: r.chord!.name,
-            time: Math.round((Date.now() - startRef.current) / 1000),
-            confidence: r.confidence,
-          }]);
+        // 如果置信度较高，尝试进行稳定性判断
+        if (r?.chord && r.confidence >= 0.55) {
+          if (r.chord.name === candidateChordRef.current) {
+            stableCountRef.current++;
+          } else {
+            candidateChordRef.current = r.chord.name;
+            stableCountRef.current = 1;
+          }
+
+          // 只有当同一个和弦连续出现 6 次以上（约 100ms），才认为是稳定的，可以记录到历史中
+          if (stableCountRef.current >= 6 && candidateChordRef.current !== lastPushedChordRef.current) {
+            lastPushedChordRef.current = candidateChordRef.current;
+            vibrate(10);
+            setHistory(h => {
+              const next = [...h, {
+                name: candidateChordRef.current,
+                time: Math.round((Date.now() - startRef.current) / 1000),
+                confidence: r.confidence,
+              }];
+              // 限制历史记录数量，防止长时间运行导致内存和渲染压力过大
+              if (next.length > 50) return next.slice(next.length - 50);
+              return next;
+            });
+          }
+        } else {
+          // 置信度不够时，如果没检测到稳定和弦，重置计数器防止误判
+          candidateChordRef.current = '';
+          stableCountRef.current = 0;
         }
       });
       setListening(true);

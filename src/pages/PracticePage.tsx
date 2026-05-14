@@ -39,16 +39,67 @@ function Metronome() {
   const [beats, setBeats] = useState(4);
   const [running, setRunning] = useState(false);
   const [current, setCurrent] = useState(-1);
+  
+  const nextNoteTimeRef = useRef(0);
+  const currentBeatRef = useRef(0);
   const timerRef = useRef<number|null>(null);
+  const uiQueueRef = useRef<{ beat: number; time: number }[]>([]);
+  const uiTimerRef = useRef<number|null>(null);
+
   useEffect(() => {
-    if (!running) { if (timerRef.current) clearInterval(timerRef.current); setCurrent(-1); return; }
-    let beat = 0; synth.click(true); vibrate(20); setCurrent(0); beat = 1;
-    timerRef.current = window.setInterval(() => {
-      const isAcc = beat % beats === 0; synth.click(isAcc); if(isAcc) vibrate(20);
-      setCurrent(beat % beats); beat++;
-    }, 60000/bpm);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    if (!running) {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (uiTimerRef.current) cancelAnimationFrame(uiTimerRef.current);
+      setCurrent(-1);
+      return;
+    }
+
+    const start = async () => {
+      await synth.unlock();
+      nextNoteTimeRef.current = synth.getCurrentTime() + 0.1;
+      currentBeatRef.current = 0;
+      uiQueueRef.current = [];
+
+      const scheduleAheadTime = 0.15;
+      const lookahead = 25.0;
+
+      const scheduler = () => {
+        while (nextNoteTimeRef.current < synth.getCurrentTime() + scheduleAheadTime) {
+          const isAcc = currentBeatRef.current === 0;
+          synth.click(isAcc, nextNoteTimeRef.current);
+          uiQueueRef.current.push({ beat: currentBeatRef.current, time: nextNoteTimeRef.current });
+          nextNoteTimeRef.current += 60.0 / bpm;
+          currentBeatRef.current = (currentBeatRef.current + 1) % beats;
+        }
+        timerRef.current = window.setTimeout(scheduler, lookahead);
+      };
+
+      const drawUI = () => {
+        const now = synth.getCurrentTime();
+        let lastBeat = -1;
+        while (uiQueueRef.current.length > 0 && uiQueueRef.current[0].time <= now) {
+          lastBeat = uiQueueRef.current[0].beat;
+          uiQueueRef.current.shift();
+        }
+        if (lastBeat !== -1) {
+          setCurrent(lastBeat);
+          if (lastBeat === 0) vibrate(20);
+        }
+        uiTimerRef.current = requestAnimationFrame(drawUI);
+      };
+
+      scheduler();
+      drawUI();
+    };
+    
+    start();
+
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (uiTimerRef.current) cancelAnimationFrame(uiTimerRef.current);
+    };
   }, [running, bpm, beats]);
+
   return (
     <div className="metronome">
       <div className="bpm-display">{bpm}</div>

@@ -103,7 +103,7 @@ class GuitarSynth {
     ];
 
     // 短噪声模拟指尖/拨片的"触弦"瞬态（非常短）
-    const clickLen = 0.008;
+    const clickLen = 0.04;
     const clickBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * clickLen), ctx.sampleRate);
     const clickData = clickBuf.getChannelData(0);
     for (let i = 0; i < clickData.length; i++) {
@@ -117,13 +117,16 @@ class GuitarSynth {
     clickFilt.frequency.value = Math.min(freq * 3, 4000);
     clickFilt.Q.value = 0.6;
     const clickGain = ctx.createGain();
-    clickGain.gain.setValueAtTime(vol * 0.35, t0);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.04);
+    clickGain.gain.setValueAtTime(0, t0);
+    clickGain.gain.linearRampToValueAtTime(vol * 0.35, t0 + 0.002);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, t0 + clickLen - 0.005);
+    clickGain.gain.linearRampToValueAtTime(0, t0 + clickLen);
+    
     clickSrc.connect(clickFilt);
     clickFilt.connect(clickGain);
     clickGain.connect(bus);
     clickSrc.start(t0);
-    clickSrc.stop(t0 + clickLen);
+    clickSrc.stop(t0 + clickLen + 0.05);
 
     // 各谐波振荡器
     const nodes: (OscillatorNode | GainNode)[] = [clickSrc as any, clickFilt as any, clickGain];
@@ -139,10 +142,11 @@ class GuitarSynth {
       const g = ctx.createGain();
       const peakVol = vol * amp;
       const decay = durationSec * decayMult;
-      // 起音包络：极短的上升（~3ms）→ 指数衰减
-      g.gain.setValueAtTime(0.001, t0);
+      // 起音包络：极短的上升（~3ms）→ 指数衰减 → 完全归零（防止结束时爆音）
+      g.gain.setValueAtTime(0, t0);
       g.gain.linearRampToValueAtTime(peakVol, t0 + 0.003);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peakVol * 0.001), t0 + decay);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peakVol * 0.001), t0 + decay - 0.05);
+      g.gain.linearRampToValueAtTime(0, t0 + decay);
 
       osc.connect(g);
       g.connect(bus);
@@ -180,10 +184,14 @@ class GuitarSynth {
     });
   }
 
+  getCurrentTime(): number {
+    return this.getCtx().currentTime;
+  }
+
   /** 节拍器 click —— 用短正弦脉冲，模拟木块/木鱼的柔和敲击声 */
-  click(accent = false) {
+  click(accent = false, when = 0) {
     const ctx = this.getCtx();
-    const now = ctx.currentTime;
+    const now = when > 0 ? when : ctx.currentTime;
     const bus = this.getBus();
 
     // 正弦脉冲（不用方波，避免刺耳）
