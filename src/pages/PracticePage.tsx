@@ -7,17 +7,22 @@ import Fretboard from '../components/Fretboard';
 import { vibrate, vibratePattern } from '../utils/haptic';
 import { getTodayStats, getRecentDays, recordSession } from '../utils/progress';
 
-type Tab = 'metronome' | 'rhythm' | 'songs' | 'caged' | 'fifths' | 'quiz' | 'stats';
+type Tab = 'quiz' | 'fifths' | 'caged' | 'metronome' | 'rhythm' | 'songs' | 'stats';
 
 export default function PracticePage() {
-  const [tab, setTab] = useState<Tab>('metronome');
+  const [tab, setTab] = useState<Tab>('quiz');
   return (
     <div>
-      <div className="card"><h2>🎯 综合练习</h2><p>节拍器、节奏型、歌曲谱、CAGED、五度圈、听音测验、练习记录。</p></div>
+      <div className="card"><h2>🎯 综合训练</h2><p>带反馈/计分的训练：听音辨认、五度圈速答、CAGED 体系、节拍器、节奏型示范、歌曲跟弹、练习打卡记录。</p></div>
       <div className="chip-row" style={{ marginBottom: 12 }}>
         {([
-          ['metronome','🥁 节拍器'],['rhythm','🎶 节奏型'],['songs','📜 歌曲谱'],
-          ['caged','🖐 CAGED'],['fifths','⭕ 五度圈'],['quiz','👂 听音'],['stats','📊 记录'],
+          ['quiz','👂 听音辨认'],
+          ['fifths','⭕ 五度圈速答'],
+          ['caged','🖐 CAGED 体系'],
+          ['metronome','🥁 节拍器'],
+          ['rhythm','🎶 节奏型示范'],
+          ['songs','📜 歌曲跟弹'],
+          ['stats','📊 练习记录'],
         ] as [Tab,string][]).map(([k,l]) => (
           <button key={k} className={'chip'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</button>
         ))}
@@ -156,38 +161,71 @@ function RhythmPatterns() {
   const [bpm, setBpm] = useState(80);
   const [playing, setPlaying] = useState(false);
   const [currentBeat, setCurrentBeat] = useState(-1);
+  
   const timerRef = useRef<number | null>(null);
+  const nextNoteTimeRef = useRef(0);
+  const currentBeatRef = useRef(0);
+  const uiQueueRef = useRef<{ beat: number; time: number }[]>([]);
+  const uiTimerRef = useRef<number | null>(null);
 
   const p = RHYTHM_PATTERNS[selected];
 
   // 播放示范
   useEffect(() => {
     if (!playing) {
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (timerRef.current) { window.clearTimeout(timerRef.current); timerRef.current = null; }
+      if (uiTimerRef.current) cancelAnimationFrame(uiTimerRef.current);
       setCurrentBeat(-1);
       return;
     }
-    // 一个节奏型有 N 拍，对应一小节；根据 BPM 算出每拍时间
-    // 对于 6 拍或 8 拍的节奏型，当作八分音符，每拍 = 半拍时值
-    const isSubdivided = p.beats.length > 4;
-    const interval = isSubdivided ? (60000 / bpm / 2) : (60000 / bpm);
 
-    let beat = 0;
-    // 立即播放第一拍
-    playBeat(p.strumDirs[0]);
-    setCurrentBeat(0);
-    vibrate(15);
-    beat = 1;
+    const start = async () => {
+      await synth.unlock();
+      nextNoteTimeRef.current = synth.getCurrentTime() + 0.1;
+      currentBeatRef.current = 0;
+      uiQueueRef.current = [];
 
-    timerRef.current = window.setInterval(() => {
-      const idx = beat % p.beats.length;
-      playBeat(p.strumDirs[idx]);
-      setCurrentBeat(idx);
-      if (idx === 0) vibrate(15); // 小节头震动
-      beat++;
-    }, interval);
+      const isSubdivided = p.beats.length > 4;
+      const intervalSecs = (isSubdivided ? (60.0 / bpm / 2) : (60.0 / bpm));
+      const scheduleAheadTime = 0.15;
+      const lookahead = 25.0;
 
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+      const scheduler = () => {
+        while (nextNoteTimeRef.current < synth.getCurrentTime() + scheduleAheadTime) {
+          const idx = currentBeatRef.current;
+          playBeat(p.strumDirs[idx], nextNoteTimeRef.current);
+          uiQueueRef.current.push({ beat: idx, time: nextNoteTimeRef.current });
+          
+          nextNoteTimeRef.current += intervalSecs;
+          currentBeatRef.current = (currentBeatRef.current + 1) % p.beats.length;
+        }
+        timerRef.current = window.setTimeout(scheduler, lookahead);
+      };
+
+      const drawUI = () => {
+        const now = synth.getCurrentTime();
+        let lastBeat = -1;
+        while (uiQueueRef.current.length > 0 && uiQueueRef.current[0].time <= now) {
+          lastBeat = uiQueueRef.current[0].beat;
+          uiQueueRef.current.shift();
+        }
+        if (lastBeat !== -1) {
+          setCurrentBeat(lastBeat);
+          if (lastBeat === 0) vibrate(15);
+        }
+        uiTimerRef.current = requestAnimationFrame(drawUI);
+      };
+
+      scheduler();
+      drawUI();
+    };
+
+    start();
+
+    return () => {
+      if (timerRef.current) window.clearTimeout(timerRef.current);
+      if (uiTimerRef.current) cancelAnimationFrame(uiTimerRef.current);
+    };
   }, [playing, bpm, selected]);
 
   // 切换节奏型时停止
@@ -248,26 +286,34 @@ function RhythmPatterns() {
 }
 
 /** 根据指令用 C 和弦发声 */
-function playBeat(dir: string) {
+function playBeat(dir: string, when: number = 0) {
   // 单弦弹奏：s1 ~ s6
   const singleMatch = dir.match(/^s([1-6])$/);
   if (singleMatch) {
     const strNum = +singleMatch[1] as 1|2|3|4|5|6;
     const pos = DEMO_CHORD.find(p => p.stringNum === strNum);
-    if (pos) synth.playFret(pos.stringNum, pos.fret, 1.8);
+    if (pos) synth.playFret(pos.stringNum, pos.fret, 1.8, when);
     return;
   }
   switch (dir) {
     case 'down':
-      synth.strum(DEMO_CHORD, { direction: 'down', duration: 1.2, spread: 0.018 });
+      synth.strum(DEMO_CHORD, { direction: 'down', duration: 1.2, spread: 0.018, when });
       break;
     case 'up':
-      synth.strum(DEMO_HIGH, { direction: 'up', duration: 1.0, spread: 0.015 });
+      synth.strum(DEMO_HIGH, { direction: 'up', duration: 1.0, spread: 0.015, when });
       break;
     case 'thumb':
       // 拇指弹最低的发声弦（C 和弦是 5 弦）
       const bass = DEMO_CHORD.reduce((a, b) => a.stringNum > b.stringNum ? a : b);
-      synth.playFret(bass.stringNum, bass.fret, 1.8);
+      synth.playFret(bass.stringNum, bass.fret, 1.8, when);
+      break;
+    case 'pluck':
+      // 手指同时拨高音弦（3, 2, 1 弦）
+      DEMO_HIGH.forEach(p => synth.playFret(p.stringNum, p.fret, 1.4, when));
+      break;
+    case 'slap':
+      // 拍弦（切音）：发出闷音
+      synth.strum(DEMO_CHORD, { direction: 'down', duration: 0.15, spread: 0.005, when });
       break;
     case 'mute':
       break;

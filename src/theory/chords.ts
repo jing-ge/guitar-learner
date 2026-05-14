@@ -200,6 +200,167 @@ export const CHORDS: ChordDef[] = [
     quality: 'sus', category: '挂留和弦', difficulty: 1,
     shapes: [{ frets: [0, 2, 2, 2, 0, 0], fingers: [0, 1, 2, 3, 0, 0] }],
   },
+
+  // ============ 更多开放和弦 ============
+  {
+    id: 'Bb', name: 'Bb', fullName: 'Bb 大三和弦',
+    quality: 'major', category: '横按和弦', difficulty: 4,
+    shapes: [{
+      frets: [1, 3, 3, 3, 1, 1],
+      fingers: [1, 2, 3, 4, 1, 1],
+      barre: { fromString: 1, toString: 6, fret: 1 }
+    }],
+    tips: 'A 形横按：食指横按 1 品，和 F 和弦同形不同位置。'
+  },
+  {
+    id: 'B', name: 'B', fullName: 'B 大三和弦（横按）',
+    quality: 'major', category: '横按和弦', difficulty: 4,
+    shapes: [{
+      frets: [-1, 2, 4, 4, 4, 2],
+      fingers: [0, 1, 2, 3, 4, 1],
+      barre: { fromString: 1, toString: 5, fret: 2 }
+    }],
+    tips: 'A 形横按在 2 品。'
+  },
+
+  // ============ 更多小三和弦 ============
+  {
+    id: 'Cm', name: 'Cm', fullName: 'C 小三和弦（横按）',
+    quality: 'minor', category: '横按和弦', difficulty: 4,
+    shapes: [{
+      frets: [-1, 3, 5, 5, 4, 3],
+      fingers: [0, 1, 3, 4, 2, 1],
+      barre: { fromString: 1, toString: 5, fret: 3 }
+    }],
+    tips: 'Am 形横按在 3 品。'
+  },
+  {
+    id: 'Gm', name: 'Gm', fullName: 'G 小三和弦（横按）',
+    quality: 'minor', category: '横按和弦', difficulty: 4,
+    shapes: [{
+      frets: [3, 5, 5, 3, 3, 3],
+      fingers: [1, 3, 4, 1, 1, 1],
+      barre: { fromString: 1, toString: 6, fret: 3 }
+    }],
+    tips: 'Em 形横按在 3 品。'
+  },
+
+  // ============ 更多属七和弦 ============
+  {
+    id: 'F7', name: 'F7', fullName: 'F 属七和弦',
+    quality: 'dom7', category: '七和弦', difficulty: 3,
+    shapes: [{
+      frets: [1, 2, 1, 2, 1, 1],
+      fingers: [1, 2, 1, 3, 1, 1],
+      barre: { fromString: 1, toString: 6, fret: 1 }
+    }],
+    tips: '在 F 和弦基础上松开 4 弦 3 品按到 2 品。'
+  },
+
+  // ============ 更多大七和弦 ============
+  {
+    id: 'Amaj7', name: 'Amaj7', fullName: 'A 大七和弦',
+    quality: 'maj7', category: '七和弦', difficulty: 1,
+    shapes: [{ frets: [-1, 0, 2, 1, 2, 0], fingers: [0, 0, 2, 1, 3, 0] }],
+    tips: '在 A 和弦基础上把 3 弦从 2 品改为 1 品。'
+  },
+  {
+    id: 'Dmaj7', name: 'Dmaj7', fullName: 'D 大七和弦',
+    quality: 'maj7', category: '七和弦', difficulty: 2,
+    shapes: [{ frets: [-1, -1, 0, 2, 2, 2], fingers: [0, 0, 0, 1, 2, 3] }],
+    tips: '梦幻般的爵士和弦。'
+  },
+  {
+    id: 'Emaj7', name: 'Emaj7', fullName: 'E 大七和弦',
+    quality: 'maj7', category: '七和弦', difficulty: 2,
+    shapes: [{ frets: [0, 2, 1, 1, 0, 0], fingers: [0, 2, 1, 1, 0, 0] }],
+    tips: '在 E 和弦基础上 4、3 弦按 1 品。'
+  },
+  {
+    id: 'Fmaj7', name: 'Fmaj7', fullName: 'F 大七和弦',
+    quality: 'maj7', category: '七和弦', difficulty: 2,
+    shapes: [{ frets: [-1, -1, 3, 2, 1, 0], fingers: [0, 0, 3, 2, 1, 0] }],
+    tips: '不需要横按的 Fmaj7，比 F 简单很多。'
+  },
+
+  // ============ 更多小七和弦 ============
+  {
+    id: 'Cm7', name: 'Cm7', fullName: 'C 小七和弦（横按）',
+    quality: 'min7', category: '七和弦', difficulty: 4,
+    shapes: [{
+      frets: [-1, 3, 5, 3, 4, 3],
+      fingers: [0, 1, 3, 1, 2, 1],
+      barre: { fromString: 1, toString: 5, fret: 3 }
+    }],
+    tips: 'Am7 形横按在 3 品。'
+  },
+  {
+    id: 'Gm7', name: 'Gm7', fullName: 'G 小七和弦',
+    quality: 'min7', category: '七和弦', difficulty: 3,
+    shapes: [{
+      frets: [3, 5, 3, 3, 3, 3],
+      fingers: [1, 3, 1, 1, 1, 1],
+      barre: { fromString: 1, toString: 6, fret: 3 }
+    }],
+    tips: 'Em7 形横按在 3 品。'
+  },
+  {
+    id: 'Bm7', name: 'Bm7', fullName: 'B 小七和弦（横按）',
+    quality: 'min7', category: '七和弦', difficulty: 3,
+    shapes: [{
+      frets: [-1, 2, 0, 2, 0, 2],
+      fingers: [0, 1, 0, 2, 0, 3]
+    }],
+    tips: 'Am7 形横按在 2 品。'
+  },
+
+  // ============ 更多挂留和弦 ============
+  {
+    id: 'Csus2', name: 'Csus2', fullName: 'C 二度挂留和弦',
+    quality: 'sus', category: '挂留和弦', difficulty: 2,
+    shapes: [{ frets: [-1, 3, 0, 0, 3, 0], fingers: [0, 2, 0, 0, 3, 0] }],
+  },
+  {
+    id: 'Csus4', name: 'Csus4', fullName: 'C 四度挂留和弦',
+    quality: 'sus', category: '挂留和弦', difficulty: 2,
+    shapes: [{ frets: [-1, 3, 3, 0, 1, 1], fingers: [0, 3, 4, 0, 1, 1] }],
+  },
+  {
+    id: 'Gsus4', name: 'Gsus4', fullName: 'G 四度挂留和弦',
+    quality: 'sus', category: '挂留和弦', difficulty: 2,
+    shapes: [{ frets: [3, 3, 0, 0, 1, 3], fingers: [2, 3, 0, 0, 1, 4] }],
+  },
+  {
+    id: 'Esus2', name: 'Esus2', fullName: 'E 二度挂留和弦',
+    quality: 'sus', category: '挂留和弦', difficulty: 1,
+    shapes: [{ frets: [0, 2, 4, 4, 0, 0], fingers: [0, 1, 2, 3, 0, 0] }],
+  },
+
+  // ============ 减和弦 ============
+  {
+    id: 'Adim', name: 'Adim', fullName: 'A 减三和弦',
+    quality: 'dim', category: '开放和弦', difficulty: 3,
+    shapes: [{ frets: [-1, 0, 1, 2, 1, 0], fingers: [0, 0, 1, 2, 3, 0] }],
+    tips: '紧张不安的和弦色彩，常用于过渡。'
+  },
+  {
+    id: 'Bdim', name: 'Bdim', fullName: 'B 减三和弦',
+    quality: 'dim', category: '开放和弦', difficulty: 3,
+    shapes: [{ frets: [-1, 2, 3, 4, 3, 0], fingers: [0, 1, 2, 3, 4, 0] }],
+  },
+
+  // ============ 增和弦 ============
+  {
+    id: 'Caug', name: 'Caug', fullName: 'C 增三和弦',
+    quality: 'aug', category: '开放和弦', difficulty: 3,
+    shapes: [{ frets: [-1, 3, 2, 1, 1, 0], fingers: [0, 3, 2, 1, 1, 0] }],
+    tips: '梦幻上升感，比大三和弦多一个增五度。'
+  },
+  {
+    id: 'Aaug', name: 'Aaug', fullName: 'A 增三和弦',
+    quality: 'aug', category: '开放和弦', difficulty: 3,
+    shapes: [{ frets: [-1, 0, 2, 2, 2, 1], fingers: [0, 0, 1, 2, 3, 4] }],
+  },
 ];
 
 /** 按分类分组 */

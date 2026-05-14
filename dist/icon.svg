@@ -1,19 +1,61 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f39c12"/>
+      <stop offset="100%" style="stop-color:#e74c3c"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#deb887"/>
+      <stop offset="100%" style="stop-color:#cd853f"/>
+    </linearGradient>
+  </defs>
+  
   <!-- 背景 -->
-  <rect width="512" height="512" rx="96" fill="#1a2128"/>
-  <!-- 木吉他音孔 -->
-  <circle cx="256" cy="256" r="120" fill="#3a2a1d" stroke="#f59e0b" stroke-width="14"/>
-  <circle cx="256" cy="256" r="86" fill="#0f1419"/>
-  <!-- 6 根弦 -->
-  <g stroke="#f3e9d2" stroke-linecap="round">
-    <line x1="60" y1="178" x2="452" y2="178" stroke-width="3"/>
-    <line x1="60" y1="208" x2="452" y2="208" stroke-width="3.5"/>
-    <line x1="60" y1="238" x2="452" y2="238" stroke-width="4"/>
-    <line x1="60" y1="278" x2="452" y2="278" stroke-width="4.5"/>
-    <line x1="60" y1="308" x2="452" y2="308" stroke-width="5"/>
-    <line x1="60" y1="338" x2="452" y2="338" stroke-width="6"/>
+  <circle cx="256" cy="256" r="240" fill="url(#bg)"/>
+  
+  <!-- 吉他琴身 -->
+  <ellipse cx="256" cy="340" rx="100" ry="120" fill="url(#body)" stroke="#8b4513" stroke-width="5"/>
+  
+  <!-- 音孔 -->
+  <circle cx="256" cy="360" r="40" fill="#2c1810" stroke="#deb887" stroke-width="4"/>
+  <circle cx="256" cy="360" r="35" fill="none" stroke="#d4a574" stroke-width="2"/>
+  
+  <!-- 琴颈 -->
+  <rect x="238" y="80" width="36" height="190" fill="#8b4513" rx="3"/>
+  
+  <!-- 品丝 -->
+  <line x1="240" y1="120" x2="272" y2="120" stroke="#c0c0c0" stroke-width="2"/>
+  <line x1="240" y1="155" x2="272" y2="155" stroke="#c0c0c0" stroke-width="2"/>
+  <line x1="240" y1="190" x2="272" y2="190" stroke="#c0c0c0" stroke-width="2"/>
+  <line x1="240" y1="225" x2="272" y2="225" stroke="#c0c0c0" stroke-width="2"/>
+  
+  <!-- 琴头 -->
+  <path d="M238 80 L238 55 Q238 45 248 45 L264 45 Q274 45 274 55 L274 80 Z" fill="#8b4513"/>
+  
+  <!-- 调音旋钮 -->
+  <circle cx="245" cy="60" r="6" fill="#d4a574" stroke="#b8860b" stroke-width="1"/>
+  <circle cx="267" cy="60" r="6" fill="#d4a574" stroke="#b8860b" stroke-width="1"/>
+  <circle cx="245" cy="72" r="6" fill="#d4a574" stroke="#b8860b" stroke-width="1"/>
+  <circle cx="267" cy="72" r="6" fill="#d4a574" stroke="#b8860b" stroke-width="1"/>
+  
+  <!-- 琴桥 -->
+  <rect x="220" y="420" width="72" height="15" fill="#8b4513" rx="3"/>
+  
+  <!-- 琴弦 -->
+  <line x1="246" y1="85" x2="246" y2="420" stroke="#f5f5dc" stroke-width="1.5"/>
+  <line x1="256" y1="85" x2="256" y2="420" stroke="#f5f5dc" stroke-width="1.5"/>
+  <line x1="266" y1="85" x2="266" y2="420" stroke="#f5f5dc" stroke-width="1.5"/>
+  
+  <!-- 装饰音符 -->
+  <g fill="rgba(255,255,255,0.4)">
+    <circle cx="400" cy="150" r="15"/>
+    <rect x="412" y="110" width="5" height="45" rx="2"/>
+    <path d="M417 110 Q430 105 425 120 Q420 130 417 125" fill="rgba(255,255,255,0.4)"/>
+    
+    <circle cx="100" cy="300" r="18"/>
+    <rect x="115" y="255" width="5" height="50" rx="2"/>
+    
+    <circle cx="380" cy="420" r="12"/>
+    <rect x="389" y="385" width="4" height="40" rx="2"/>
   </g>
-  <!-- 装饰圆点 -->
-  <circle cx="256" cy="256" r="8" fill="#f59e0b"/>
 </svg>

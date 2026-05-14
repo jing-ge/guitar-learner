@@ -1,224 +1,236 @@
 // 民谣吉他音色合成器（Web Audio API）
-// 多谐波叠加 + 琴体共鸣滤波 + 温暖低通 → 接近真实民谣吉他拨弦
-// 完全离线，无需音频样本
+// 加法合成：基频 + 多个谐波，每个谐波独立的振幅包络 + 衰减率
+// 完全离线，可控、不会爆音
 
 import { midiToFreq, fretToMidi } from '../theory/notes';
+import { getSharedAudioContext, unlockSharedContext } from './audio-ctx';
 
 class GuitarSynth {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
-  private bodyFilter: BiquadFilterNode | null = null;
-  private warmth: BiquadFilterNode | null = null;
-  private unlocked = false;
+  private bus: GainNode | null = null;
+  private initialized = false;
 
   private getCtx(): AudioContext {
-    if (!this.ctx) {
-      const Ctor = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
-      this.ctx = new Ctor();
+    if (!this.initialized) {
+      this.ctx = getSharedAudioContext();
 
-      // 温暖滤波：砍掉高频毛刺
-      const warmth = this.ctx.createBiquadFilter();
-      warmth.type = 'lowpass';
-      warmth.frequency.value = 3500;
-      warmth.Q.value = 0.5;
+      // 总线入口
+      const bus = this.ctx.createGain();
+      bus.gain.value = 1.0;
 
-      // 琴体共鸣：低频加厚
+      // 琴箱共鸣（200Hz 木质感）
       const body = this.ctx.createBiquadFilter();
       body.type = 'peaking';
-      body.frequency.value = 180;
-      body.gain.value = 4;
-      body.Q.value = 1.2;
+      body.frequency.value = 220;
+      body.gain.value = 2.5;
+      body.Q.value = 1.0;
 
-      // 限制器（DynamicsCompressor）—— 防止音量调高后削顶失真
+      // 中频在场感
+      const presence = this.ctx.createBiquadFilter();
+      presence.type = 'peaking';
+      presence.frequency.value = 1200;
+      presence.gain.value = 1.5;
+      presence.Q.value = 1.0;
+
+      // 高频温暖（去掉刺耳成分）
+      const air = this.ctx.createBiquadFilter();
+      air.type = 'lowpass';
+      air.frequency.value = 4500;
+      air.Q.value = 0.5;
+
+      // 砍掉极低频
+      const hp = this.ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 70;
+      hp.Q.value = 0.5;
+
+      // 限制器
       const limiter = this.ctx.createDynamicsCompressor();
-      limiter.threshold.value = -8;
-      limiter.knee.value = 6;
+      limiter.threshold.value = -10;
+      limiter.knee.value = 8;
       limiter.ratio.value = 12;
       limiter.attack.value = 0.003;
-      limiter.release.value = 0.15;
+      limiter.release.value = 0.2;
 
-      // 主音量（提升到 1.4 — 比原 0.45 大 3 倍多）
       const master = this.ctx.createGain();
-      master.gain.value = 1.4;
+      master.gain.value = 0.6;
 
-      // 连接链：body → warmth → limiter → master → destination
-      body.connect(warmth);
-      warmth.connect(limiter);
-      limiter.connect(master);
-      master.connect(this.ctx.destination);
+      bus.connect(body);
+      body.connect(presence);
+      presence.connect(air);
+      air.connect(hp);
+      hp.connect(master);
+      master.connect(limiter);
+      limiter.connect(this.ctx.destination);
 
       this.master = master;
-      this.bodyFilter = body;
-      this.warmth = warmth;
+      this.bus = bus;
+      this.initialized = true;
     }
-    return this.ctx;
+    return this.ctx!;
   }
 
-  /** 获取混音总线入口（body → warmth → master → dest） */
-  private getBus(): AudioNode {
-    this.getCtx();
-    return this.bodyFilter!;
-  }
-
-  /** 解锁音频（iOS Safari & Android Chrome 都需要用户手势） */
   async unlock(): Promise<void> {
-    const ctx = this.getCtx();
-    if (ctx.state === 'suspended') {
-      try { await ctx.resume(); } catch {}
-    }
-    if (!this.unlocked) {
-      const buf = ctx.createBuffer(1, 1, 22050);
-      const s = ctx.createBufferSource();
-      s.buffer = buf;
-      s.connect(ctx.destination);
-      try { s.start(0); } catch {}
-      this.unlocked = true;
-    }
+    this.getCtx();
+    await unlockSharedContext();
   }
 
   setVolume(v: number) {
     if (this.master) this.master.gain.value = Math.max(0, Math.min(1, v));
   }
 
-  /**
-   * 核心：民谣吉他拨弦音
-   * 原理：用多个谐波正弦（基频 + 2/3/4/5 倍频）叠加出拨弦初始音色，
-   * 每个谐波按不同衰减速率消失（高次衰减更快），再经全局温暖滤波 + 琴体共鸣。
-   */
-  playFreq(freq: number, durationSec = 2.0, vol = 0.55, when = 0) {
-    const ctx = this.getCtx();
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    const t0 = ctx.currentTime + when;
-    const bus = this.getBus();
-
-    // 谐波参数：[倍频, 相对振幅, 衰减时间比例]
-    // 民谣吉他特点：基频强、偶次谐波明显、高次衰减快
-    const harmonics: [number, number, number][] = [
-      [1,   1.0,  1.0 ],   // 基频
-      [2,   0.48, 0.72],   // 二倍频（八度泛音）
-      [3,   0.22, 0.50],   // 三倍频
-      [4,   0.12, 0.35],   // 四倍频
-      [5,   0.06, 0.25],   // 五倍频
-      [6,   0.03, 0.18],   // 六倍频（很快消失）
-    ];
-
-    // 短噪声模拟指尖/拨片的"触弦"瞬态（非常短）
-    const clickLen = 0.04;
-    const clickBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * clickLen), ctx.sampleRate);
-    const clickData = clickBuf.getChannelData(0);
-    for (let i = 0; i < clickData.length; i++) {
-      const t = i / clickData.length;
-      clickData[i] = (Math.random() * 2 - 1) * (1 - t) * 0.3;
-    }
-    const clickSrc = ctx.createBufferSource();
-    clickSrc.buffer = clickBuf;
-    const clickFilt = ctx.createBiquadFilter();
-    clickFilt.type = 'bandpass';
-    clickFilt.frequency.value = Math.min(freq * 3, 4000);
-    clickFilt.Q.value = 0.6;
-    const clickGain = ctx.createGain();
-    clickGain.gain.setValueAtTime(0, t0);
-    clickGain.gain.linearRampToValueAtTime(vol * 0.35, t0 + 0.002);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, t0 + clickLen - 0.005);
-    clickGain.gain.linearRampToValueAtTime(0, t0 + clickLen);
-    
-    clickSrc.connect(clickFilt);
-    clickFilt.connect(clickGain);
-    clickGain.connect(bus);
-    clickSrc.start(t0);
-    clickSrc.stop(t0 + clickLen + 0.05);
-
-    // 各谐波振荡器
-    const nodes: (OscillatorNode | GainNode)[] = [clickSrc as any, clickFilt as any, clickGain];
-    for (const [mult, amp, decayMult] of harmonics) {
-      const f = freq * mult;
-      if (f > 8000) continue; // 超过 8kHz 不合成（反正听不到什么）
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(f, t0);
-      // 轻微频率抖动模拟非线性（更自然）
-      osc.frequency.linearRampToValueAtTime(f * 0.9992, t0 + durationSec * 0.8);
-
-      const g = ctx.createGain();
-      const peakVol = vol * amp;
-      const decay = durationSec * decayMult;
-      // 起音包络：极短的上升（~3ms）→ 指数衰减 → 完全归零（防止结束时爆音）
-      g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(peakVol, t0 + 0.003);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, peakVol * 0.001), t0 + decay - 0.05);
-      g.gain.linearRampToValueAtTime(0, t0 + decay);
-
-      osc.connect(g);
-      g.connect(bus);
-      osc.start(t0);
-      osc.stop(t0 + decay + 0.05);
-      nodes.push(osc, g);
-    }
-
-    // 清理节点
-    setTimeout(() => {
-      for (const n of nodes) {
-        try { n.disconnect(); } catch {}
-      }
-    }, (when + durationSec + 0.2) * 1000);
-  }
-
-  playMidi(midi: number, durationSec = 2.0, when = 0) {
-    this.playFreq(midiToFreq(midi), durationSec, 0.55, when);
-  }
-
-  playFret(stringNum: 1|2|3|4|5|6, fret: number, durationSec = 2.0, when = 0) {
-    // 低音弦音量略大、衰减略长，高音弦稍柔
-    const volMap: Record<number, number> = { 6: 0.60, 5: 0.57, 4: 0.54, 3: 0.50, 2: 0.48, 1: 0.45 };
-    const v = volMap[stringNum] ?? 0.50;
-    this.playFreq(midiToFreq(fretToMidi(stringNum, fret)), durationSec, v, when);
-  }
-
-  strum(positions: { stringNum: 1|2|3|4|5|6; fret: number }[], opts: { direction?: 'down' | 'up'; duration?: number; spread?: number } = {}) {
-    const { direction = 'down', duration = 2.5, spread = 0.028 } = opts;
-    const sorted = [...positions].sort((a, b) =>
-      direction === 'down' ? b.stringNum - a.stringNum : a.stringNum - b.stringNum
-    );
-    sorted.forEach((p, idx) => {
-      this.playFret(p.stringNum, p.fret, duration, idx * spread);
-    });
-  }
-
   getCurrentTime(): number {
     return this.getCtx().currentTime;
   }
 
-  /** 节拍器 click —— 用短正弦脉冲，模拟木块/木鱼的柔和敲击声 */
+  /**
+   * 加法合成拨弦音
+   * - 多个正弦谐波（1, 2, 3, 4, 5, 6 倍频）叠加
+   * - 振幅按 1/n^1.3 自然衰减（与真实吉他频谱相近）
+   * - 每个谐波独立的指数衰减（基频尾音长、高次衰减快）
+   * - 严格振幅归一化，绝不爆音
+   */
+  playFreq(freq: number, durationSec = 3.0, vol = 0.4, when = 0) {
+    const ctx = this.getCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const t0 = ctx.currentTime + when;
+    const busNode = this.bus!;
+
+    // 谐波配置：[倍频, 相对振幅, 衰减时间倍率]
+    const harmonics: { n: number; amp: number; decayMult: number }[] = [
+      { n: 1, amp: 1.00, decayMult: 1.00 },  // 基频：完整衰减
+      { n: 2, amp: 0.45, decayMult: 0.80 },  // 八度：略短
+      { n: 3, amp: 0.22, decayMult: 0.60 },
+      { n: 4, amp: 0.12, decayMult: 0.45 },
+      { n: 5, amp: 0.07, decayMult: 0.35 },
+      { n: 6, amp: 0.04, decayMult: 0.25 },
+    ];
+
+    // 归一化：所有谐波振幅总和不超过 1
+    const totalAmp = harmonics.reduce((sum, h) => sum + h.amp, 0);
+    const norm = 0.55 / totalAmp; // 单根弦最大振幅 0.55，6 弦叠加最大 3.3，由 limiter 压住
+
+    const nodes: AudioNode[] = [];
+
+    for (const h of harmonics) {
+      const f = freq * h.n;
+      if (f > 6000) continue; // 6kHz 以上不合成（节省 CPU）
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, t0);
+
+      const g = ctx.createGain();
+      const peakVol = vol * h.amp * norm;
+      const decay = Math.max(0.3, durationSec * h.decayMult);
+
+      // ADSR 包络：5ms 起音 → 指数衰减
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(peakVol, t0 + 0.005);
+      // setTargetAtTime 给自然指数衰减，时间常数 = decay/3（约 5倍衰减期内归零）
+      g.gain.setTargetAtTime(0, t0 + 0.01, decay / 3);
+
+      osc.connect(g);
+      g.connect(busNode);
+      osc.start(t0);
+      // 振荡器在尾音明确归零后停止
+      osc.stop(t0 + decay + 0.5);
+
+      nodes.push(osc, g);
+    }
+
+    // 一个非常短的"触弦噪声"瞬态（10ms），让音头更真实
+    const tickLen = 0.012;
+    const tickBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * tickLen), ctx.sampleRate);
+    const tickData = tickBuf.getChannelData(0);
+    for (let i = 0; i < tickData.length; i++) {
+      const t = i / tickData.length;
+      tickData[i] = (Math.random() * 2 - 1) * (1 - t);
+    }
+    const tickSrc = ctx.createBufferSource();
+    tickSrc.buffer = tickBuf;
+    const tickLP = ctx.createBiquadFilter();
+    tickLP.type = 'lowpass';
+    tickLP.frequency.value = Math.min(2500, freq * 4);
+    tickLP.Q.value = 0.3;
+    const tickGain = ctx.createGain();
+    tickGain.gain.setValueAtTime(0, t0);
+    tickGain.gain.linearRampToValueAtTime(vol * 0.05, t0 + 0.001);
+    tickGain.gain.exponentialRampToValueAtTime(0.0001, t0 + tickLen);
+    tickSrc.connect(tickLP);
+    tickLP.connect(tickGain);
+    tickGain.connect(busNode);
+    tickSrc.start(t0);
+    tickSrc.stop(t0 + tickLen + 0.02);
+    nodes.push(tickSrc, tickLP, tickGain);
+
+    // 清理
+    const totalLife = durationSec * 1.2 + 0.5;
+    setTimeout(() => {
+      for (const n of nodes) {
+        try { n.disconnect(); } catch {}
+      }
+    }, (when + totalLife) * 1000);
+  }
+
+  playMidi(midi: number, durationSec = 3.0, when = 0) {
+    this.playFreq(midiToFreq(midi), durationSec, 0.45, when);
+  }
+
+  playFret(stringNum: 1|2|3|4|5|6, fret: number, durationSec = 3.0, when = 0) {
+    // 低音弦音量略大
+    const volMap: Record<number, number> = { 6: 0.50, 5: 0.48, 4: 0.46, 3: 0.42, 2: 0.40, 1: 0.38 };
+    const v = volMap[stringNum] ?? 0.42;
+    this.playFreq(midiToFreq(fretToMidi(stringNum, fret)), durationSec, v, when);
+  }
+
+  strum(positions: { stringNum: 1|2|3|4|5|6; fret: number }[], opts: { direction?: 'down' | 'up'; duration?: number; spread?: number; when?: number } = {}) {
+    const { direction = 'down', duration = 3.0, spread = 0.022, when = 0 } = opts;
+    const sorted = [...positions].sort((a, b) =>
+      direction === 'down' ? b.stringNum - a.stringNum : a.stringNum - b.stringNum
+    );
+    sorted.forEach((p, idx) => {
+      const velRatio = direction === 'down'
+        ? 1 - idx * 0.04
+        : 0.85 - idx * 0.03;
+      // 6 弦同时弹时，单根弦的有效音量要相应降低（避免叠加爆音）
+      const stringVolMap: Record<number, number> = { 6: 0.42, 5: 0.40, 4: 0.38, 3: 0.35, 2: 0.32, 1: 0.30 };
+      const baseVol = stringVolMap[p.stringNum] ?? 0.35;
+      // 低音弦尾音更长（真实吉他物理特性）
+      const stringDurMult: Record<number, number> = { 6: 1.15, 5: 1.10, 4: 1.05, 3: 1.0, 2: 0.95, 1: 0.90 };
+      const dur = duration * (stringDurMult[p.stringNum] ?? 1.0);
+      this.playFreq(midiToFreq(fretToMidi(p.stringNum, p.fret)), dur, baseVol * Math.max(0.65, velRatio), when + idx * spread);
+    });
+  }
+
+  /** 节拍器 click */
   click(accent = false, when = 0) {
     const ctx = this.getCtx();
     const now = when > 0 ? when : ctx.currentTime;
-    const bus = this.getBus();
+    const busNode = this.bus!;
 
-    // 正弦脉冲（不用方波，避免刺耳）
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = accent ? 880 : 660;
-
-    // 快速的频率下滑，模拟木块敲击的"嗒"声
     osc.frequency.exponentialRampToValueAtTime(accent ? 440 : 330, now + 0.04);
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(accent ? 0.45 : 0.30, now);
     g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
 
-    // 轻微失真让音色更有"木质感"
     const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
       const x = (i / 128) - 1;
-      curve[i] = (Math.PI + 3) * x / (Math.PI + 3 * Math.abs(x)); // soft clip
+      curve[i] = (Math.PI + 3) * x / (Math.PI + 3 * Math.abs(x));
     }
     shaper.curve = curve;
     shaper.oversample = 'none';
 
     osc.connect(shaper);
     shaper.connect(g);
-    g.connect(bus);
+    g.connect(busNode);
     osc.start(now);
     osc.stop(now + 0.08);
 

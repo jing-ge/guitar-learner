@@ -3,13 +3,9 @@ import { useEffect, useState } from 'react';
 import { getTodayStats, getRecentDays } from '../utils/progress';
 
 const CARDS = [
-  { to: '/tuner',     icon: '🎛', title: '调音器',       desc: '麦克风实时检测弦音，帮你把吉他调准再练习。' },
-  { to: '/chords',    icon: '🎵', title: '和弦学习',     desc: '和弦指法图、转换练习、弹琴检测。' },
-  { to: '/scales',    icon: '🎼', title: '音阶学习',     desc: '听音测试 + 弹琴识别 + 跟弹通关。' },
-  { to: '/fretboard', icon: '🎸', title: '指板学习',     desc: '点击指板发声，含找音练习。' },
-  { to: '/circle',    icon: '⭕', title: '五度圈',       desc: '乐理终极工具，学习调性关系与和弦走向。' },
-  { to: '/listen',    icon: '🎧', title: '听歌识别',     desc: '实时识别和弦走向 + 听曲定调。' },
-  { to: '/practice',  icon: '🎯', title: '综合练习',     desc: '节拍器、节奏型、歌曲谱、CAGED等。' }
+  { to: '/learn',    icon: '📚', title: '学习',     desc: '和弦、音阶、五声、指板、五度圈—— 系统学习吉他理论与基础。' },
+  { to: '/practice', icon: '🎯', title: '练习',     desc: '调音器、听歌识别、听音辨认、五度圈速答、CAGED、记录。' },
+  { to: '/play',     icon: '🎼', title: '伴奏',     desc: '鼓机 + 和弦伴奏 + 歌曲编排，从前奏到尾奏一键演奏。' },
 ];
 
 function useInstallInfo() {

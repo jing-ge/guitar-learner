@@ -3,22 +3,16 @@ import { useEffect, useState } from 'react';
 import { synth } from './audio/synth';
 import { initTheme, setStoredTheme, type Theme } from './utils/theme';
 import HomePage from './pages/HomePage';
-import FretboardPage from './pages/FretboardPage';
-import ChordsPage from './pages/ChordsPage';
-import ScalesPage from './pages/ScalesPage';
-import PracticePage from './pages/PracticePage';
-import CircleOfFifthsPage from './pages/CircleOfFifthsPage';
-import TunerPage from './pages/TunerPage';
-import ListenPage from './pages/ListenPage';
+import LearnHub from './pages/LearnHub';
+import PracticeHub from './pages/PracticeHub';
+import PlayHub from './pages/PlayHub';
 
+// 底部 4 大主区导航
 const TABS = [
-  { to: '/chords',     icon: '🎵', label: '和弦' },
-  { to: '/scales',     icon: '🎼', label: '音阶' },
-  { to: '/fretboard',  icon: '🎸', label: '指板' },
-  { to: '/circle',     icon: '⭕', label: '五度圈' },
-  { to: '/listen',     icon: '🎧', label: '听歌' },
-  { to: '/tuner',      icon: '🎛', label: '调音' },
-  { to: '/practice',   icon: '🎯', label: '练习' }
+  { to: '/home',     icon: '🏠', label: '首页' },
+  { to: '/learn',    icon: '📚', label: '学习' },
+  { to: '/practice', icon: '🎯', label: '练习' },
+  { to: '/play',     icon: '🎼', label: '伴奏' },
 ];
 
 export default function App() {
@@ -57,13 +51,9 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/fretboard" element={<FretboardPage />} />
-          <Route path="/chords" element={<ChordsPage />} />
-          <Route path="/scales" element={<ScalesPage />} />
-          <Route path="/circle" element={<CircleOfFifthsPage />} />
-          <Route path="/listen" element={<ListenPage />} />
-          <Route path="/tuner" element={<TunerPage />} />
-          <Route path="/practice" element={<PracticePage />} />
+          <Route path="/learn" element={<LearnHub />} />
+          <Route path="/practice" element={<PracticeHub />} />
+          <Route path="/play" element={<PlayHub />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </main>
