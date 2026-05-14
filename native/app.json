@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "吉他学习",
+    "slug": "guitar-learner-app",
+    "version": "1.0.0",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a2128"
+    },
+    "orientation": "portrait",
+    "scheme": "guitarlearner",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.you.guitarlearner",
+      "backgroundColor": "#0f1419",
+      "navigationBar": {
+        "backgroundColor": "#0f1419",
+        "barStyle": "light-content"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.VIBRATE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.you.guitarlearner",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "需要使用麦克风进行调音和音高识别"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "./plugins/copy-web-assets",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "27c51a21-bac3-48dd-8b32-8719fa431db8"
+      }
+    },
+    "owner": "bojingfeng"
+  }
+}
