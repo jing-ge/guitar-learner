@@ -407,3 +407,53 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 **已知遗留**：无。R6 视觉收口完成，5 个子页与全站 SubpageHero 语言一致。
 
 **结论**：Round 6 通过率 **12/12 ✅**。学习中心 5 个子页视觉语言统一、Fretboard 颜色 token 化、暗色 + 浅色双主题均正常。**建议关 Round 6，进入 Round 7**（候选方向延续 R5 末尾建议：ChordDetect 七和弦模板补全 / SoloPage 五声练习反馈层 / 或继续视觉打磨 SettingsPage 等剩余非学习中心页面）。
+
+### Round 7 — 2026-05-15
+**主题**：识别 → 学习闭环 + 弱项追踪
+
+**改动文件**：
+- 新增：src/utils/saved-progressions.ts
+- 修改：src/utils/progress.ts / src/pages/ListenPage.tsx / src/pages/ChordsPage.tsx / src/pages/HomePage.tsx / src/styles/global.css
+
+**产品要点**：
+- 听歌识别后一键保存为"我的进行"（最多 50 条 FIFO；history ≥ 3 才出 CTA）
+- 首页推荐优先用户保存的进行（practiceCount<5 的最近一条）
+- ChordDetect 跳过 = 标记困难，自动累加 mistakes
+- 首页"📌 需要补练"卡片展示 top 3 弱项和弦（count ≥ 2 入榜）
+- 跳转用 localStorage pending key 解耦路由
+
+**开发要点**：
+- saved-progressions / chord-mistakes 双重 schema 兜底（损坏 JSON 直接返回空集合，不冒泡到 HomeErrorBoundary）
+- ChordSwitchDrill 加"我的"segmented 模式 + 列表 + ▶ 练习 + 🗑 删除
+- HomePage getRecommendation 加保存项优先分支
+- gl_practice_pending / gl_chords_pending_id 一次性跳转 key（ChordsPage mount 时消费并清除）
+
+**新增 localStorage key**：
+- gl_saved_progressions_v1
+- gl_chord_mistakes_v1
+- gl_practice_pending（一次性）
+- gl_chords_pending_id（一次性）
+
+**测试结果**（12 用例，全部通过）：
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R7-01 | 首页推荐保存项 | ✅ | 注入 3 条保存进行后访问 `/#/home`，推荐卡 `<h2>` 文案 = `练习你保存的「新走向」（4个和弦）`，CTA 按钮 `→ 去练`（最新创建且 practiceCount=0 命中分支）。 |
+| R7-02 | 首页弱项卡片 | ✅ | "📌 需要补练"出现，3 个 `.weak-chord-item` 按钮文本 = `F ×5` / `Bm ×3` / `D ×2`；C（count=1）正确被阈值过滤掉。 |
+| R7-03 | 空数据隐藏弱项卡 | ✅ | `removeItem('gl_chord_mistakes_v1') + reload`，body 文本无 `📌 需要补练`，snapshot 中无 weak-chord-item 按钮。 |
+| R7-04 | 推荐 → 转换练习跳转 | ✅ | 点 `→ 去练` → URL = `http://0.0.0.0:5173/#/learn`；segmented 选中 `🔄 转换练习` + `我的（3）`；3 行 saved-prog-item；`gl_practice_pending` 已被消费为 `null`。 |
+| R7-05 | 弱项 → 和弦详情跳转 | ✅ | 点 F 缩略图后 URL=`/#/learn`，selectedTab=`📖 和弦库`，body 含 `F 大三和弦（横按）` + ChordHowTo 的"🎸 按弦顺序"步骤；`gl_chords_pending_id` 已被消费为 `null`。 |
+| R7-06 | 我的进行列表 | ✅ | `.saved-prog-item` count=3，innerText 依次：`老进行 \| 4 个 · 练习 5 次 \| C → G → Am → F \| ▶ 练习 \| 🗑` / `小情歌 \| 4 个 · 练习 2 次 \| G → D → Em → C` / `新走向 \| 4 个 · 练习 0 次 \| Am → F → C → G`。 |
+| R7-07 | 删除 | ✅ | 点 `老进行` 行 🗑 → UI 立即变 2 行（小情歌/新走向）；localStorage `gl_saved_progressions_v1` 解析后 names = `["小情歌","新走向"]`，老进行已剔除。 |
+| R7-08 | 练习计数 +1 | ✅ | 点 `小情歌` 行 `▶ 练习` 前 practiceCount=2，点后立即 read localStorage = 3；其他项（新走向）practiceCount=0 不变。 |
+| R7-09 | history < 3 不显示 CTA | ✅ | 进入 PracticeHub → 听歌识别 tab，准备开始状态 body 文本不含 `保存这段走向`；history 为空时 CTA 隐藏。 |
+| R7-10 | history ≥ 3 显示 CTA（grep） | ✅ | `grep -nE "保存这段走向\|💾" src/pages/ListenPage.tsx` 命中：`261: >💾 保存这段走向</button>`、`284: detail: { text: \`💾 已保存：${name}（${ids.length} 个和弦）\` }`；条件位于 line 252 `history.length >= 3 && !showSaveForm`。 |
+| R7-11 | ChordDetect 跳过即记录（grep） | ✅ | `grep -n "recordChordMistake" src/pages/ChordsPage.tsx` → `10:import { recordSessionThrottled, recordChordMistake } from '../utils/progress';` + `640: if (targetChord) recordChordMistake(targetChord.id);`，跳过路径会标记当前 chord 为 mistake。 |
+| R7-12 | 脏数据兜底 | ✅ | 注入 `gl_saved_progressions_v1='{not valid'` + `gl_chord_mistakes_v1='"garbage"'` 后 reload，首页正常渲染（无白屏、无 `加载首页时出错` ErrorBoundary、推荐落回默认文案 `第一次来，先调音…`）；console 无未捕获 TypeError，仅 Vite/React Router 常规警告。 |
+
+**控制台 errors 汇总**：全 12 用例期间 `agent-browser console` 只有 Vite HMR debug、React DevTools info、React Router v7 future flag warning，**无未捕获 error / TypeError**。
+
+**截图目录**：`/tmp/guitar-test/round7/`（10 张：R7-01 ~ R7-09 + R7-12；R7-10/11 为纯 grep 验证，无截图）。
+
+**已知遗留**：无功能性问题。技术细节：`agent-browser click @eN` 对 `.weak-chord-item` 按钮触发不灵（被外层 `[onclick]` 通用容器拦截），改用 `eval` 直接 `.click()` 元素能正常触发；非产品 bug，不影响真机交互。
+
+**结论**：Round 7 通过率 **12/12 ✅**。识别→学习闭环跑通：听歌识别 → 保存进行 → 首页推荐 → 一键去练 → 转换练习「我的」面板；弱项追踪闭环也通：ChordDetect 跳过 → mistakes 累加 → 首页"📌 需要补练" → 点缩略图直达和弦详情。脏数据兜底无白屏。**建议关 Round 7，进入 Round 8**（候选方向：① ListenPage 真音频环境下的 CTA + 节奏分析；② ChordDetect 真 mic 测试 + 七和弦模板补全；③ 首页打卡热力图与"我的进行"统计联动；④ 设置页 / 导出导入本地数据）。

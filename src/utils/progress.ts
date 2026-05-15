@@ -214,6 +214,71 @@ function secondsToLevel(seconds: number): HeatLevel {
   return 4;
 }
 
+/* ============ 弱项追踪（跳过 / 错过的和弦） ============ */
+const MISTAKE_KEY = 'gl_chord_mistakes_v1';
+
+export interface ChordMistakeEntry {
+  chordId: string;
+  count: number;
+  lastAt: number;
+}
+
+function loadMistakeMap(): Record<string, ChordMistakeEntry> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MISTAKE_KEY) || '{}');
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out: Record<string, ChordMistakeEntry> = {};
+    for (const k of Object.keys(raw)) {
+      const v = (raw as any)[k];
+      if (!v || typeof v !== 'object') continue;
+      const chordId = typeof v.chordId === 'string' && v.chordId ? v.chordId : k;
+      const count = Number(v.count);
+      const lastAt = Number(v.lastAt);
+      if (!isFinite(count) || count <= 0) continue;
+      out[chordId] = {
+        chordId,
+        count: Math.floor(count),
+        lastAt: isFinite(lastAt) && lastAt > 0 ? lastAt : 0,
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function saveMistakeMap(m: Record<string, ChordMistakeEntry>): void {
+  try { localStorage.setItem(MISTAKE_KEY, JSON.stringify(m)); } catch {}
+}
+
+export function recordChordMistake(chordId: string): void {
+  if (!chordId) return;
+  const m = loadMistakeMap();
+  const cur = m[chordId];
+  m[chordId] = {
+    chordId,
+    count: (cur?.count || 0) + 1,
+    lastAt: Date.now(),
+  };
+  saveMistakeMap(m);
+}
+
+export function getTopMistakes(n = 3): ChordMistakeEntry[] {
+  const m = loadMistakeMap();
+  return Object.values(m)
+    .filter(e => e.count >= 2)
+    .sort((a, b) => b.count - a.count || b.lastAt - a.lastAt)
+    .slice(0, n);
+}
+
+export function clearChordMistake(chordId: string): void {
+  const m = loadMistakeMap();
+  if (m[chordId]) {
+    delete m[chordId];
+    saveMistakeMap(m);
+  }
+}
+
 export function getHeatmapDaysWithIntensity(
   days = 30,
 ): { date: string; level: HeatLevel; isToday: boolean; seconds: number }[] {

@@ -4,6 +4,7 @@ import type { ChordDef } from '../theory/chords';
 import { SHARP_NAMES } from '../theory/notes';
 import { vibrate } from '../utils/haptic';
 import { recordSession } from '../utils/progress';
+import { addSavedProgression, loadSavedProgressions } from '../utils/saved-progressions';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 
 type Tab = 'chords' | 'key';
@@ -85,6 +86,8 @@ function LiveChordRecognizer() {
   const [history, setHistory] = useState<ChordEntry[]>([]);
   const [micState, setMicState] = useState<MicPermState>('idle');
   const [sensitivity, setSensitivity] = useState<DetectorSensitivity>('normal');
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [saveName, setSaveName] = useState('');
   const startRef = useRef(0);
   const historyRef = useRef<ChordEntry[]>([]);
   const flashTimerRef = useRef<number | null>(null);
@@ -246,6 +249,53 @@ function LiveChordRecognizer() {
               const text = history.map(h => h.name).join(' → ');
               try { navigator.clipboard?.writeText(text); } catch {}
             }}>📋 复制走向</button>
+            {history.length >= 3 && !showSaveForm && (
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ marginTop: 8, marginLeft: 8 }}
+                onClick={() => {
+                  const count = loadSavedProgressions().length;
+                  setSaveName(`进行 ${count + 1}`);
+                  setShowSaveForm(true);
+                }}
+              >💾 保存这段走向</button>
+            )}
+            {showSaveForm && (
+              <div className="card" style={{ marginTop: 10 }}>
+                <div className="field" style={{ marginBottom: 8 }}>
+                  <label className="field-label">名称</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={saveName}
+                    onChange={e => setSaveName(e.target.value)}
+                    style={{ width: '100%' }}
+                    autoFocus
+                  />
+                </div>
+                <div className="btn-row">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      const name = saveName.trim() || `进行 ${loadSavedProgressions().length + 1}`;
+                      const ids = history.map(h => h.chordId);
+                      addSavedProgression({ name, ids });
+                      window.dispatchEvent(new CustomEvent('progress-recorded', {
+                        detail: { text: `💾 已保存：${name}（${ids.length} 个和弦）` }
+                      }));
+                      setShowSaveForm(false);
+                      setSaveName('');
+                      setHistory([]);
+                      historyRef.current = [];
+                    }}
+                  >保存</button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => { setShowSaveForm(false); setSaveName(''); }}
+                  >取消</button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

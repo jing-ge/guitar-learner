@@ -7,7 +7,9 @@ import { CHORDS, type ChordDef, chordPlayablePositions, chordsByCategory } from 
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
 import { chordDetector, type ChordDetectEvent, type DetectorSensitivity, type DetectorState } from '../audio/chord-detector';
-import { recordSessionThrottled } from '../utils/progress';
+import { recordSessionThrottled, recordChordMistake } from '../utils/progress';
+import { loadSavedProgressions, markPracticed, removeSavedProgression, type SavedProgression } from '../utils/saved-progressions';
+import { chordDisplayName } from '../audio/chord-progressions';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 
 /** 探测麦克风权限 */
@@ -46,7 +48,10 @@ const MODE_META: Record<PageMode, { label: string; title: string; desc: string }
 };
 
 export default function ChordsPage() {
-  const [pageMode, setPageMode] = useState<PageMode>('browse');
+  const [pageMode, setPageMode] = useState<PageMode>(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('gl_practice_pending')) return 'switch';
+    return 'browse';
+  });
   const modes: PageMode[] = ['browse', 'switch', 'detect'];
 
   // 切走时停止检测
@@ -98,17 +103,45 @@ function ChordSwitchDrill() {
   const [bpm, setBpm] = useState(60);
   const [beatsPerChord, setBeatsPerChord] = useState(4);
   const [presetIdx, setPresetIdx] = useState(0);
-  const [customMode, setCustomMode] = useState(false);
+  const [source, setSource] = useState<'preset' | 'custom' | 'saved'>('preset');
   const [customIds, setCustomIds] = useState<string[]>(['C','G','Am','F']);
+  const [savedList, setSavedList] = useState<SavedProgression[]>(() => loadSavedProgressions());
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [beatInChord, setBeatInChord] = useState(0);
   const [playChordSound, setPlayChordSound] = useState(true);
   const timerRef = useRef<number | null>(null);
 
-  const activeIds = customMode ? customIds : PRESETS[presetIdx].ids;
+  const refreshSaved = useCallback(() => setSavedList(loadSavedProgressions()), []);
+
+  // 启动时消费 pending 练习
+  useEffect(() => {
+    const pending = localStorage.getItem('gl_practice_pending');
+    if (!pending) return;
+    localStorage.removeItem('gl_practice_pending');
+    const list = loadSavedProgressions();
+    const found = list.find(p => p.id === pending);
+    if (found) {
+      setSavedList(list);
+      setSource('saved');
+      setActiveSavedId(found.id);
+      setRunning(false);
+      setCurrentIdx(0);
+    }
+  }, []);
+
+  const activeSaved = source === 'saved' && activeSavedId
+    ? savedList.find(p => p.id === activeSavedId) || null
+    : null;
+
+  const activeIds: string[] =
+    source === 'preset' ? PRESETS[presetIdx].ids :
+    source === 'custom' ? customIds :
+    (activeSaved ? activeSaved.ids : []);
+
   const chordList = activeIds.map(id => CHORDS.find(c => c.id === id)!).filter(Boolean);
-  const currentChord = chordList[currentIdx % chordList.length];
+  const currentChord = chordList[currentIdx % Math.max(chordList.length, 1)];
 
   // 自定义走向：增删和弦
   const addChord = (id: string) => {
@@ -121,11 +154,27 @@ function ChordSwitchDrill() {
     const next = [...customIds]; next[i] = id; setCustomIds(next);
   };
 
+  const handlePracticeSaved = (p: SavedProgression) => {
+    setSource('saved');
+    setActiveSavedId(p.id);
+    setRunning(false);
+    setCurrentIdx(0);
+    markPracticed(p.id);
+    refreshSaved();
+  };
+
+  const handleDeleteSaved = (id: string) => {
+    removeSavedProgression(id);
+    if (activeSavedId === id) setActiveSavedId(null);
+    refreshSaved();
+  };
+
   useEffect(() => {
     if (!running) {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       return;
     }
+    if (chordList.length === 0) { setRunning(false); return; }
     let beat = 0;
     synth.click(true);
     vibrate(30);
@@ -179,20 +228,26 @@ function ChordSwitchDrill() {
         </div>
       </div>
 
-      {/* 走向选择：预设 / 自定义 */}
-      <div className="chip-row" style={{ marginBottom: 8 }}>
-        <button className={'chip' + (!customMode ? ' active' : '')} onClick={() => { setCustomMode(false); setRunning(false); }}>预设走向</button>
-        <button className={'chip' + (customMode ? ' active' : '')} onClick={() => { setCustomMode(true); setRunning(false); }}>自定义</button>
+      {/* 走向来源：预设 / 自定义 / 我的 */}
+      <div className="subpage-segmented" role="tablist" style={{ marginBottom: 10 }}>
+        <button role="tab" aria-selected={source === 'preset'} className={source === 'preset' ? 'active' : ''}
+          onClick={() => { setSource('preset'); setRunning(false); setCurrentIdx(0); }}>预设</button>
+        <button role="tab" aria-selected={source === 'custom'} className={source === 'custom' ? 'active' : ''}
+          onClick={() => { setSource('custom'); setRunning(false); setCurrentIdx(0); }}>自定义</button>
+        <button role="tab" aria-selected={source === 'saved'} className={source === 'saved' ? 'active' : ''}
+          onClick={() => { setSource('saved'); setRunning(false); setCurrentIdx(0); refreshSaved(); }}>我的（{savedList.length}）</button>
       </div>
 
-      {!customMode ? (
+      {source === 'preset' && (
         <div className="field" style={{ marginBottom: 10 }}>
           <label className="field-label">选择预设</label>
           <select className="select" value={presetIdx} onChange={e => { setPresetIdx(+e.target.value); setRunning(false); setCurrentIdx(0); }}>
             {PRESETS.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
           </select>
         </div>
-      ) : (
+      )}
+
+      {source === 'custom' && (
         <div className="card" style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>自定义走向（2-8 个和弦）</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -212,6 +267,30 @@ function ChordSwitchDrill() {
               <button className="btn btn-sm" onClick={() => addChord('C')} style={{ minHeight: 32 }}>+ 加和弦</button>
             )}
           </div>
+        </div>
+      )}
+
+      {source === 'saved' && (
+        <div style={{ marginBottom: 10 }}>
+          {savedList.length === 0 ? (
+            <div className="empty-state">还没有保存的进行。去「听歌识别」录一段并保存吧。</div>
+          ) : (
+            <div className="saved-prog-list">
+              {savedList.map(p => (
+                <div key={p.id} className={'saved-prog-item' + (activeSavedId === p.id ? ' active' : '')}>
+                  <div className="sp-head">
+                    <div className="sp-name">{p.name}</div>
+                    <div className="sp-meta">{p.ids.length} 个 · 练习 {p.practiceCount} 次</div>
+                  </div>
+                  <div className="sp-ids">{p.ids.map(id => chordDisplayName(id)).join(' → ')}</div>
+                  <div className="sp-actions">
+                    <button className="btn btn-primary btn-sm" onClick={() => handlePracticeSaved(p)}>▶ 练习</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleDeleteSaved(p.id)}>🗑</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -252,6 +331,22 @@ function ChordBrowser() {
   const categories = Object.keys(grouped);
   const [activeCat, setActiveCat] = useState<string>(categories[0]);
   const [selected, setSelected] = useState<ChordDef | null>(CHORDS[0]);
+
+  // 消费 pending：从首页"需要补练"跳进来选中目标和弦
+  useEffect(() => {
+    const pending = localStorage.getItem('gl_chords_pending_id');
+    if (!pending) return;
+    localStorage.removeItem('gl_chords_pending_id');
+    const chord = CHORDS.find(c => c.id === pending);
+    if (!chord) return;
+    setSelected(chord);
+    for (const cat of categories) {
+      if ((grouped[cat] || []).some(c => c.id === chord.id)) {
+        setActiveCat(cat);
+        break;
+      }
+    }
+  }, [categories, grouped]);
 
   const playStrum = async (chord: ChordDef, direction: 'down' | 'up' = 'down') => {
     await synth.unlock();
@@ -542,6 +637,7 @@ function ChordDetect() {
     setScore(s => ({ ...s, total: s.total + 1 }));
     setFeedback('wrong');
     pendingFeedbackRef.current = 'wrong';
+    if (targetChord) recordChordMistake(targetChord.id);
   };
 
   const isMatching = activeChord && targetChord && activeChord.id === targetChord.id;

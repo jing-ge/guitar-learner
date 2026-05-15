@@ -1,6 +1,9 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats } from '../utils/progress';
+import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopMistakes } from '../utils/progress';
+import { loadSavedProgressions, type SavedProgression } from '../utils/saved-progressions';
+import { CHORDS } from '../theory/chords';
+import ChordDiagram from '../components/ChordDiagram';
 
 const MODULE_CARDS = [
   {
@@ -71,7 +74,14 @@ function getPrimaryAction(summary: ReturnType<typeof getPracticeSummary>) {
   return { label: '开始今天的练习', helper: '延续之前的进度，把练习重新接起来。' };
 }
 
-function getRecommendation(summary: ReturnType<typeof getPracticeSummary>, today: ReturnType<typeof getTodayStats>) {
+function getRecommendation(
+  summary: ReturnType<typeof getPracticeSummary>,
+  today: ReturnType<typeof getTodayStats>,
+  savedToPractice: SavedProgression | null,
+) {
+  if (savedToPractice) {
+    return `练习你保存的「${savedToPractice.name}」（${savedToPractice.ids.length}个和弦）`;
+  }
   if (!summary.hasAnyRecord) {
     return '第一次来，先调音，再做一次听音辨认热身。';
   }
@@ -138,10 +148,27 @@ function HomePageInner() {
   const today = getTodayStats();
   const summary = getPracticeSummary();
   const heatmapDays = useMemo(() => getHeatmapDaysWithIntensity(30), []);
+  const savedToPractice = useMemo<SavedProgression | null>(() => {
+    const list = loadSavedProgressions().filter(p => (p.practiceCount || 0) < 5);
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    return list[0] || null;
+  }, []);
+  const topMistakes = useMemo(() => getTopMistakes(3), []);
   const primaryAction = getPrimaryAction(summary);
   const greeting = getGreeting(summary);
-  const recommendText = getRecommendation(summary, today);
+  const recommendText = getRecommendation(summary, today, savedToPractice);
   const newbieActivated = searchParams.get('start') === 'newbie';
+
+  const handlePracticeSaved = () => {
+    if (!savedToPractice) return;
+    localStorage.setItem('gl_practice_pending', savedToPractice.id);
+    navigate('/learn');
+  };
+
+  const handleWeakChord = (chordId: string) => {
+    localStorage.setItem('gl_chords_pending_id', chordId);
+    navigate('/learn');
+  };
 
   return (
     <div className="home-layout">
@@ -185,10 +212,40 @@ function HomePageInner() {
       <section className="recommend-card">
         <div className="card-kicker">今日推荐任务</div>
         <h2>{recommendText}</h2>
-        <Link to="/practice" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-          去完成推荐
-        </Link>
+        {savedToPractice ? (
+          <button className="btn btn-primary" onClick={handlePracticeSaved}>
+            → 去练
+          </button>
+        ) : (
+          <Link to="/practice" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+            去完成推荐
+          </Link>
+        )}
       </section>
+
+      {topMistakes.length > 0 && (
+        <section className="card weak-chords-card">
+          <div className="section-title">📌 需要补练</div>
+          <div className="weak-chords-list">
+            {topMistakes.map(m => {
+              const chord = CHORDS.find(c => c.id === m.chordId);
+              if (!chord) return null;
+              return (
+                <button
+                  key={m.chordId}
+                  type="button"
+                  className="weak-chord-item"
+                  onClick={() => handleWeakChord(m.chordId)}
+                >
+                  <ChordDiagram shape={chord.shapes[0]} size={80} title={chord.name} colorMode="dark" />
+                  <div className="wc-name">{chord.name}</div>
+                  <div className="wc-badge">×{m.count}</div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="section-title">继续探索</div>

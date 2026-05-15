@@ -1063,3 +1063,43 @@ input, select, textarea { font-size: 16px; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ============ R7 · 弱项追踪（首页"需要补练"） ============ */
+.weak-chords-card { margin-top: 0; }
+.weak-chords-list {
+  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.weak-chords-list::-webkit-scrollbar { display: none; }
+.weak-chord-item {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px; border-radius: var(--radius-md);
+  background: var(--bg-elev-2); border: 1px solid var(--line-soft);
+  text-decoration: none; color: inherit;
+  min-width: 96px;
+  position: relative;
+  cursor: pointer;
+  font: inherit;
+}
+.weak-chord-item:hover { border-color: var(--accent-cyan, var(--line-soft)); }
+.weak-chord-item .wc-name { font-size: 13px; font-weight: 700; color: var(--text-strong); }
+.weak-chord-item .wc-badge {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--danger-2); color: #1F1500;
+  font-size: 10px; font-weight: 800;
+  padding: 2px 6px; border-radius: var(--radius-pill);
+}
+
+/* ============ R7 · 我保存的进行（列表项） ============ */
+.saved-prog-list { display: flex; flex-direction: column; gap: 10px; }
+.saved-prog-item {
+  padding: 12px; border-radius: var(--radius-md);
+  background: var(--bg-elev-2); border: 1px solid var(--line-soft);
+}
+.saved-prog-item.active { border-color: var(--accent-cyan, var(--line-soft)); }
+.sp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sp-name { font-size: 15px; font-weight: 700; color: var(--text-strong); }
+.sp-meta { font-size: 11px; color: var(--text-muted); }
+.sp-ids { font-size: 13px; color: var(--text-body); margin: 6px 0 10px; word-break: break-all; }
+.sp-actions { display: flex; gap: 8px; }
+
