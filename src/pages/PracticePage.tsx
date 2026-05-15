@@ -9,31 +9,68 @@ import { getTodayStats, getRecentDays, recordSession } from '../utils/progress';
 
 type Tab = 'quiz' | 'fifths' | 'caged' | 'metronome' | 'rhythm' | 'songs' | 'stats';
 
+type MenuItem = {
+  key: Tab;
+  title: string;
+  desc: string;
+  tag: string;
+};
+
+const TRAINING_MENU: MenuItem[] = [
+  { key: 'quiz', title: '听音辨认', desc: '听一个音并快速判断音名，适合每天热身。', tag: '推荐新手' },
+  { key: 'fifths', title: '五度圈速答', desc: '强化调性顺序、关系大小调和调号记忆。', tag: '计分' },
+  { key: 'caged', title: 'CAGED', desc: '观察和弦在整块指板上的位置连接。', tag: '推荐新手' },
+  { key: 'metronome', title: '节拍器', desc: '稳定速度、拍点和基础律动。', tag: '工具' },
+  { key: 'rhythm', title: '节奏型', desc: '跟着示范练常用扫弦与分解节奏。', tag: '自由练习' },
+  { key: 'songs', title: '歌曲跟弹', desc: '按和弦走向练习切换与跟拍。', tag: '自由练习' },
+  { key: 'stats', title: '练习记录', desc: '查看今天与近期练习的累计情况。', tag: '数据' },
+];
+
+function renderTrainingContent(tab: Tab) {
+  if (tab === 'metronome') return <Metronome />;
+  if (tab === 'rhythm') return <RhythmPatterns />;
+  if (tab === 'songs') return <SongChords />;
+  if (tab === 'caged') return <CAGEDSystem />;
+  if (tab === 'fifths') return <FifthsQuiz />;
+  if (tab === 'quiz') return <ListeningQuiz />;
+  return <StatsView />;
+}
+
 export default function PracticePage() {
-  const [tab, setTab] = useState<Tab>('quiz');
+  const [activeTab, setActiveTab] = useState<Tab | null>(null);
+
   return (
     <div>
-      <div className="card"><h2>🎯 综合训练</h2><p>带反馈/计分的训练：听音辨认、五度圈速答、CAGED 体系、节拍器、节奏型示范、歌曲跟弹、练习打卡记录。</p></div>
-      <div className="chip-row" style={{ marginBottom: 12 }}>
-        {([
-          ['quiz','👂 听音辨认'],
-          ['fifths','⭕ 五度圈速答'],
-          ['caged','🖐 CAGED 体系'],
-          ['metronome','🥁 节拍器'],
-          ['rhythm','🎶 节奏型示范'],
-          ['songs','📜 歌曲跟弹'],
-          ['stats','📊 练习记录'],
-        ] as [Tab,string][]).map(([k,l]) => (
-          <button key={k} className={'chip'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</button>
-        ))}
-      </div>
-      {tab==='metronome' && <Metronome />}
-      {tab==='rhythm' && <RhythmPatterns />}
-      {tab==='songs' && <SongChords />}
-      {tab==='caged' && <CAGEDSystem />}
-      {tab==='fifths' && <FifthsQuiz />}
-      {tab==='quiz' && <ListeningQuiz />}
-      {tab==='stats' && <StatsView />}
+      {activeTab === null ? (
+        <div className="practice-menu-shell page-enter">
+          <div className="card">
+            <h2>🎯 综合训练</h2>
+            <p>从一个训练开始，不再堆叠多个入口。先选项目，再进入内容。</p>
+          </div>
+          <div className="practice-entry-list">
+            {TRAINING_MENU.map((item) => (
+              <button key={item.key} className="module-menu-card" onClick={() => setActiveTab(item.key)}>
+                <div>
+                  <div className="menu-card-title">{item.title}</div>
+                  <p>{item.desc}</p>
+                </div>
+                <span className="menu-card-tag">{item.tag}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="page-enter">
+          <div className="subpage-header practice-inner-header">
+            <button className="btn btn-ghost subpage-back" onClick={() => setActiveTab(null)}>
+              ← 返回训练菜单
+            </button>
+            <div className="subpage-title">{TRAINING_MENU.find((item) => item.key === activeTab)?.title}</div>
+            <div className="subpage-meta">{TRAINING_MENU.find((item) => item.key === activeTab)?.tag}</div>
+          </div>
+          {renderTrainingContent(activeTab)}
+        </div>
+      )}
     </div>
   );
 }
@@ -508,7 +545,7 @@ function ListeningQuiz() {
   return (
     <div className="card">
       <h2>👂 听音辨认</h2>
-      <p>点击「播放」听一个音，选出它的音名。</p>
+      <p>点击“播放”听一个音，选出它的音名。</p>
       <div className="btn-row" style={{ justifyContent: 'center', marginTop: 6 }}>
         <button className="btn btn-primary" onClick={playTarget}>▶ 播放</button>
         <button className="btn" onClick={next}>↻ 换一题</button>

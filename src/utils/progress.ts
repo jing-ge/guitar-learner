@@ -8,13 +8,47 @@ export interface DailyRecord {
 
 const KEY = 'guitar-learner-progress';
 
-function loadAll(): DailyRecord[] {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || '[]');
-  } catch { return []; }
+function normalizeSession(s: any): { module: string; score: number; total: number; seconds: number } {
+  return {
+    module: typeof s?.module === 'string' ? s.module : '',
+    score: Number(s?.score) || 0,
+    total: Number(s?.total) || 0,
+    seconds: Number(s?.seconds) || 0,
+  };
 }
 
-function saveAll(records: DailyRecord[]) {
+function normalizeRecord(r: any): DailyRecord {
+  return {
+    date: typeof r?.date === 'string' ? r.date : '',
+    totalSeconds: Number(r?.totalSeconds) || 0,
+    sessions: Array.isArray(r?.sessions) ? r.sessions.map(normalizeSession) : [],
+  };
+}
+
+export type ProgressSummary = {
+  hasAnyRecord: boolean;
+  hasTodayRecord: boolean;
+  totalDays: number;
+  totalMinutes: number;
+  streak: number;
+  tunedToday: boolean;
+  totalRight: number;
+  totalQuestions: number;
+};
+
+export function loadAll(): DailyRecord[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map(normalizeRecord)
+      .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.date));
+  } catch {
+    return [];
+  }
+}
+
+export function saveAll(records: DailyRecord[]) {
   // 只保留最近 90 天
   const cut = records.slice(-90);
   localStorage.setItem(KEY, JSON.stringify(cut));
@@ -38,6 +72,8 @@ export function recordSession(module: string, score: number, total: number, seco
   const d = today();
   let rec = all.find(r => r.date === d);
   if (!rec) { rec = { date: d, totalSeconds: 0, sessions: [] }; all.push(rec); }
+  if (!Array.isArray(rec.sessions)) rec.sessions = [];
+  if (typeof rec.totalSeconds !== 'number') rec.totalSeconds = 0;
   rec.sessions.push({ module, score, total, seconds });
   rec.totalSeconds += seconds;
   saveAll(all);
@@ -51,7 +87,78 @@ export function getRecentDays(n = 30): DailyRecord[] {
 /** 获取今日统计 */
 export function getTodayStats(): { totalSeconds: number; totalRight: number; totalQuestions: number } {
   const rec = getToday();
-  const totalRight = rec.sessions.reduce((a, s) => a + s.score, 0);
-  const totalQuestions = rec.sessions.reduce((a, s) => a + s.total, 0);
+  const sessions = Array.isArray(rec.sessions) ? rec.sessions : [];
+  const totalRight = sessions.reduce((a, s) => a + s.score, 0);
+  const totalQuestions = sessions.reduce((a, s) => a + s.total, 0);
   return { totalSeconds: rec.totalSeconds, totalRight, totalQuestions };
+}
+
+export function getPracticeSummary(): ProgressSummary {
+  const all = loadAll();
+  const todayDate = today();
+  const todayRecord = all.find(record => record.date === todayDate);
+  const practicedDates = new Set(all.filter(record => record.totalSeconds > 0).map(record => record.date));
+
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 90; i += 1) {
+    const date = cursor.toISOString().slice(0, 10);
+    if (practicedDates.has(date)) {
+      streak += 1;
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
+    if (i === 0) {
+      cursor.setDate(cursor.getDate() - 1);
+      continue;
+    }
+    break;
+  }
+
+  const totalSeconds = all.reduce((sum, record) => sum + record.totalSeconds, 0);
+  const totalRight = all.reduce((sum, record) => {
+    const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+    return sum + sessions.reduce((acc, session) => acc + session.score, 0);
+  }, 0);
+  const totalQuestions = all.reduce((sum, record) => {
+    const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+    return sum + sessions.reduce((acc, session) => acc + session.total, 0);
+  }, 0);
+  const todaySessions = Array.isArray(todayRecord?.sessions) ? todayRecord.sessions : [];
+  const tunedToday = todaySessions.some(session => /tuner/i.test(session.module));
+
+  return {
+    hasAnyRecord: all.some(record => {
+      const sessions = Array.isArray(record.sessions) ? record.sessions : [];
+      return record.totalSeconds > 0 || sessions.length > 0;
+    }),
+    hasTodayRecord: !!todayRecord && (() => {
+      const sessions = Array.isArray(todayRecord.sessions) ? todayRecord.sessions : [];
+      return todayRecord.totalSeconds > 0 || sessions.length > 0;
+    })(),
+    totalDays: practicedDates.size,
+    totalMinutes: Math.floor(totalSeconds / 60),
+    streak,
+    tunedToday,
+    totalRight,
+    totalQuestions,
+  };
+}
+
+export function getHeatmapDays(days = 30): { date: string; active: boolean; isToday: boolean }[] {
+  const recentMap = new Map(loadAll().map(record => [record.date, record]));
+  const todayDate = today();
+
+  return Array.from({ length: days }, (_, index) => {
+    const dateValue = new Date();
+    dateValue.setDate(dateValue.getDate() - (days - 1 - index));
+    const date = dateValue.toISOString().slice(0, 10);
+    const record = recentMap.get(date);
+    const sessions = Array.isArray(record?.sessions) ? record.sessions : [];
+    return {
+      date,
+      active: !!record && (record.totalSeconds > 0 || sessions.length > 0),
+      isToday: date === todayDate,
+    };
+  });
 }

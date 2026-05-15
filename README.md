@@ -86,3 +86,64 @@ guitar-learner/
 
 ## 📄 License
 MIT License
+
+## 📝 迭代记录 (Changelog)
+
+### Round 1 — 2026-05-15
+**主题**：首页"今日练什么"重构 + 练习中心减负
+
+**改动文件**：
+- `src/pages/HomePage.tsx`
+- `src/pages/PracticeHub.tsx`
+- `src/pages/PracticePage.tsx`
+- `src/utils/progress.ts`
+- `src/styles/global.css`
+
+**产品要点**：
+- 首页改为“今日练什么”首屏，包含 Hero、动态 CTA、推荐任务与 30 天热力信息。
+- 首页首屏保留首次引导次 CTA，并将安装提示弱化到非首屏顶部区域。
+- 练习中心首屏收敛为调音器、听歌识别、综合训练 3 个一级入口。
+- 综合训练改为“训练菜单 → 训练内容”两态切换，并在内容态提供 sticky 返回头。
+
+**开发要点**：
+- 首页根据本地练习进度动态切换主 CTA 与推荐文案。
+- 练习中心入口卡片与综合训练菜单卡采用移动端大卡布局。
+- 综合训练内容态支持返回训练菜单，减少首屏信息负担。
+- 全局样式同步适配新首页与浅/深色主题切换。
+
+**测试结果**：
+| 用例 | 路径 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| 首页首屏（无练习记录） | `/#/home` | ✅ | Hero 居中；三联 pill 显示 0；主 CTA 为“从调音开始”；次 CTA、推荐卡存在；安装提示不在首屏顶部。 |
+| 首页（有练习记录） | `/#/home` | ✅ | 已修复（progress 数据规范化 + HomeErrorBoundary 兜底）。 |
+| 次 CTA 跳转 | `/#/home -> /#/practice?start=newbie` | ✅ | 点击“我是新手，带我开始”后跳转到 `http://localhost:5173/home#/practice?start=newbie`。 |
+| 练习中心首屏 | `/#/practice` | ✅ | 首屏仅看到 3 个一级入口：调音器 / 听歌识别 / 综合训练。 |
+| 进入综合训练 → 训练菜单 | `/#/practice` | ✅ | 进入后展示 7 个训练项大卡，不是 chip。 |
+| 菜单 → 内容 | `/#/practice` | ✅ | 点击“听音辨认”后可见 sticky 返回头“← 返回训练菜单”及训练内容。 |
+| 返回菜单 | `/#/practice` | ✅ | 点击“← 返回训练菜单”后返回训练菜单态。 |
+| 浅色主题：首页 | `/#/home` | ✅ | 设置 `guitar-learner-theme=light` 后首页正常显示，无明显崩坏。 |
+| 浅色主题：练习中心 | `/#/practice` | ✅ | 设置 `guitar-learner-theme=light` 后练习中心正常显示，无明显崩坏。 |
+
+**Hotfix（同轮内修复）**
+
+- 改动文件：`src/utils/progress.ts`、`src/pages/HomePage.tsx`
+- 修复点：
+  - `loadAll()` 加 schema 校验 + 字段规范化（非数组 / 缺字段 / 错误类型一律降级为安全空数据）
+  - `getTodayStats / getPracticeSummary / getHeatmapDays / recordSession` 加 sessions 数组守卫
+  - HomePage 新增 `HomeErrorBoundary`，渲染异常时显示“加载首页时出错”，提供“重置进度数据”与“返回练习中心”兜底
+
+**回归测试（8 用例，移动端 390x844 视口）**
+
+| 用例 | 数据形态 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R01 | `sessions={}`（对象而非数组） | ✅ | 被规范化为合法记录，首页正常渲染（分钟 2 / 答对 0 / 连续天数 1），控制台无 error。 |
+| R02 | 仅 `date` 字段，缺 `sessions` 与 `totalSeconds` | ✅ | 被规范化为空记录，首页空状态显示（0 / 0 / 0），CTA “从调音开始”，控制台无 error。 |
+| R03 | `sessions=null` | ✅ | sessions 守卫生效，首页正常渲染（分钟 2 / 答对 0 / 连续天数 1），控制台无 error。 |
+| R04 | 顶层为对象 `{ "2026-05-15": {} }`（非数组） | ✅ | `loadAll()` 降级为 `[]`，首页空状态正常，控制台无 error。 |
+| R05 | 顶层为字符串 `"garbage"` | ✅ | `loadAll()` 降级为 `[]`，首页空状态正常，控制台无 error。 |
+| R06 | `localStorage.clear()` 全新用户 | ✅ | 新手空状态：分钟 0 / 答对 0 / 连续 0，CTA 为“从调音开始”，控制台无 error。 |
+| R07 | 当日合法记录（300s + ear-training 3/5） | ✅ | 首页显示分钟 5 / 答对 3 / 连续天数 1，主 CTA 切换为“继续今天练习”，控制台无 error。 |
+| R08 | 连续 3 天合法记录（含今日） | ✅ | 连续天数 = 3，30 天热力图最后 3 格为 active 绿色（`rgb(52,211,153)`），其余 27 格空态；控制台无 error。 |
+
+**已知遗留**：
+- 无。本轮异常数据用例（R01–R05）全部命中规范化路径，未触发 `HomeErrorBoundary` fallback；正常数据用例（R06–R08）统计与 CTA 切换均符合预期。Round 1 关单。

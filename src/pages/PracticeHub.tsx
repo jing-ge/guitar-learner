@@ -1,38 +1,63 @@
-// 练习中心：带反馈/计分的训练
-// 调音器、听歌识别、听音辨认、五度圈速答、CAGED、记录
-
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import TunerPage from './TunerPage';
 import ListenPage from './ListenPage';
-// 复用 PracticePage 内部组件需要把它们抽出来；这里先用 PracticePage 整个，但
-// 为简化，我们让 PracticeHub 直接嵌入 PracticePage 的子区段
-// 简化方案：把 PracticePage 整体在「综合」子 tab 显示
 import PracticePage from './PracticePage';
 
-type PracticeTab = 'tuner' | 'listen' | 'general';
+type PracticeTab = 'menu' | 'tuner' | 'listen' | 'general';
 
-const TABS: { key: PracticeTab; icon: string; label: string; desc: string }[] = [
-  { key: 'tuner',   icon: '🎛', label: '调音',     desc: '麦克风实时检测弦音' },
-  { key: 'listen',  icon: '🎧', label: '听歌识别', desc: '播放音乐识别和弦走向' },
-  { key: 'general', icon: '🎯', label: '综合训练', desc: '听音、五度圈、CAGED、记录' },
+const ENTRY_CARDS: { key: Exclude<PracticeTab, 'menu'>; icon: string; label: string; desc: string }[] = [
+  { key: 'tuner', icon: '🎛️', label: '调音器', desc: '先把六根弦调准，今天的练习更顺手。' },
+  { key: 'listen', icon: '🎧', label: '听歌识别', desc: '播放音乐，识别和弦走向与变化。' },
+  { key: 'general', icon: '🎯', label: '综合训练', desc: '进入训练菜单，做听音、节拍和记录。' },
 ];
 
 export default function PracticeHub() {
-  const [tab, setTab] = useState<PracticeTab>('general');
+  const [searchParams] = useSearchParams();
+  const defaultTab = useMemo<PracticeTab>(() => {
+    const start = searchParams.get('start');
+    if (start === 'newbie') return 'tuner';
+    return 'menu';
+  }, [searchParams]);
+  const [tab, setTab] = useState<PracticeTab>(defaultTab);
 
   return (
     <div>
-      <div className="hub-tabs">
-        {TABS.map(t => (
-          <button key={t.key}
-            className={'hub-tab' + (tab === t.key ? ' active' : '')}
-            onClick={() => setTab(t.key)}>
-            <span className="hub-tab-icon">{t.icon}</span>
-            <span className="hub-tab-label">{t.label}</span>
+      {tab === 'menu' && (
+        <div className="practice-hub-menu">
+          <div className="section-title section-tight">练习中心</div>
+          <div className="practice-entry-list">
+            {ENTRY_CARDS.map((entry) => (
+              <button key={entry.key} className="module-menu-card practice-entry-card" onClick={() => setTab(entry.key)}>
+                <div>
+                  <div className="menu-card-title">{entry.icon} {entry.label}</div>
+                  <p>{entry.desc}</p>
+                </div>
+                <span className="menu-card-tag">进入</span>
+              </button>
+            ))}
+          </div>
+          {searchParams.get('start') === 'newbie' && (
+            <div className="empty-state">已为新手优先打开调音器入口，先从这里开始。</div>
+          )}
+        </div>
+      )}
+
+      {tab !== 'menu' && (
+        <div className="subpage-header">
+          <button className="btn btn-ghost subpage-back" onClick={() => setTab('menu')}>
+            ← 返回练习菜单
           </button>
-        ))}
-      </div>
-      <div className="hub-content">
+          <div className="subpage-title">
+            {tab === 'tuner' ? '调音器' : tab === 'listen' ? '听歌识别' : '综合训练'}
+          </div>
+          <div className="subpage-meta">
+            {tab === 'general' ? '7 个训练项' : '准备开始'}
+          </div>
+        </div>
+      )}
+
+      <div className={tab === 'menu' ? '' : 'practice-subpage'}>
         {tab === 'tuner' && <TunerPage />}
         {tab === 'listen' && <ListenPage />}
         {tab === 'general' && <PracticePage />}
