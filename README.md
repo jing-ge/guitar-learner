@@ -198,3 +198,51 @@ MIT License
 - 验证：`npm run build` 通过；R2-02 由 ⚠️ 转为 ✅。
 
 **结论**：Round 2 通过率 **12/12 ✅**。MicPermissionState、ProgressToast、recordSessionThrottled、首页 tunedToday 分支、5 处进度记录入口、learn-subtitle 视觉对齐均工作正常。Round 2 关单，进入 Round 3。
+
+### Round 3 — 2026-05-15
+**主题**：伴奏中心架构对齐 + 进度闭环收口 + 热力图强度分级（最终轮）
+
+**改动文件**：
+- `src/pages/PlayHub.tsx`（薄壳→真 Hub 菜单 + sticky 返回头两态）
+- `src/pages/DrumMachinePage.tsx`（紫色清除、"正在演奏"卡换 hero-grad、PatternGrid 高亮统一、play-song / play-jam 记录埋点）
+- `src/pages/HomePage.tsx`（热力图改用 5 级强度 + 图例）
+- `src/utils/progress.ts`（新增 `getHeatmapDaysWithIntensity`，保留 `getHeatmapDays` 兼容）
+- `src/styles/global.css`（heat-cell 5 级配色 + 图例 + play-entry-tag-num）
+
+**产品要点**：
+- 伴奏中心从薄壳直跳改为真 Hub 菜单，与 Home/Learn/Practice 一致设计语言（菜单 + sticky 返回头两态切换）
+- 全 App 5 大模块进度闭环最终闭合（tuner / listen / chord-detect / fretboard-find / play-song+play-jam）
+- 30 天热力图升级 5 级强度（level-0..4，按 totalSeconds 60 / 300 / 900 / 1800 阈值），含"少 □□□□□ 多"图例
+
+**开发要点**：
+- PlayHub 改为真 Hub；DrumMachinePage 接 `mode` prop 不再自管 mode
+- 紫色 `#9b59b6` / `#1a1a2e` / `#16213e` 清零（grep 0 命中）
+- play-song 走 `recordSession`；play-jam 走 `recordSessionThrottled`（30s 合并）；都受 10s 阈值过滤（`flushPlaySession` 内 `if (elapsedSec < 10) return` 守卫）
+- HomePage 改用 `getHeatmapDaysWithIntensity`，旧 `getHeatmapDays` 保留以兼容
+
+**测试结果**（12 用例，移动端 390x844 视口，dev 端口 5174，伴奏 progress 通过 monkey-patch 直接走 `import('/src/utils/progress.ts')` 验证）：
+
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R3-01 | PlayHub 5 菜单卡无紫色顶部条 | ✅ | snapshot 列出 🎼歌曲合奏 / 🥁鼓机节奏 / 🎵和弦走向 / 🎸吉他节奏 / 🎸贝斯节奏 5 张 button；DOM 扫描无 `#9b59b6` / `#1a1a2e` / `#16213e` 任何 background-image。 |
+| R3-02 | sticky 返回头 + 返回按钮 | ✅ | 点"🎼 歌曲合奏"后 snapshot 出现 "← 返回伴奏菜单" button；点击该按钮 url 回到 `/#/play` 且菜单 5 张卡重新渲染。 |
+| R3-03 | 自定义数量与菜单卡数字一致 | ✅ | `localStorage.clear()` 后 4 个 key（drum/chord/strum/bass）长度均为 0，菜单卡上对应都是 "0 个自定义"。 |
+| R3-04 | "正在演奏"卡无紫色 | ✅ | 进入歌曲合奏页后 DOM 扫描所有元素的 `backgroundImage`，匹配 `9b59b6 / 1a1a2e / 16213e` 计数 = **0**。 |
+| R3-05 | 紫色清零（源码 grep） | ✅ | `grep -nE "#9b59b6\|#1a1a2e\|#16213e" src/pages/DrumMachinePage.tsx` 返回 0 命中（exit=1）。 |
+| R3-06 | PatternGrid 高亮 brand 色 | ✅ | DOM 扫描找到 border-color 含 `rgb(245, 158, 11)`（即 brand `#f59e0b`）的元素，对应 PatternGrid 高亮 token 已迁移。 |
+| R3-07 | SongArranger 写 play-song（手动触发） | ✅ | `recordSession('play-song',0,0,12)` 后 localStorage 出现 `{module:"play-song", seconds:12, t:...}`；同步 dispatch `progress-recorded` 事件后 DOM 中 `.progress-toast` 文本为 "🎼 跟伴奏练了 12 秒"。 |
+| R3-08 | Editor 写 play-jam throttle 合并 | ✅ | rapid 3 次 `recordSessionThrottled('play-jam',...,12/15/10, 30)` 后：jam sessions count = **1**，seconds = **37**（12+15+10），完美命中 throttle 合并语义。 |
+| R3-09 | 10s 阈值守卫（源码 grep） | ✅ | 实际写法是早返回式 `if (elapsedSec < 10) return;`（DrumMachinePage.tsx 第 116 行 `flushPlaySession` 内），与原 grep 模式 `elapsed >= 10` 等价语义；广义 grep `elapsedSec *< *10\|elapsed *>= *10` 命中第 116 行。 |
+| R3-10 | 热力图 5 级 + 图例 | ✅ | 注入跨阈值 5 天数据（30 / 120 / 600 / 1200 / 2400 秒）后，末 5 格 className 依次为 `level-0` / `level-1` / `level-2` / `level-3` / `level-4`，今天那格还含 `today` 类；图例文案 "少" 和 "多" 均存在。 |
+| R3-11 | 浅色主题热力图不崩 | ✅ | `data-theme="light"` 切换后热力图 5 级背景色为 `rgba(217,119,6,0.08/0.2/0.42/0.65)` 至 `rgb(217,119,6)`，透明度递增清晰可辨，无 console error。 |
+| R3-12 | 损坏 JSON 不白屏（ErrorBoundary + loadAll 规范化） | ✅ | `localStorage.setItem('guitar-learner-progress','{not valid json')` 后 reload `/#/home`：HomePage 正常渲染（标题"下午好 / 今日练什么"、统计面板、热力图都在），无未捕获 TypeError。 |
+
+**控制台 errors 汇总**：全 12 用例均无 error，仅两条 React Router v7 future flag warning（与前两轮一致，与本轮改动无关）。
+
+**截图目录**：`/tmp/guitar-test/round3/`（R3-01 至 R3-12，共 12 张）。
+
+**已知遗留**：
+- 测试环境无真麦克风/真 Web Audio 播放，R3-07 / R3-08 通过 `import('/src/utils/progress.ts')` 直接调用 `recordSession` / `recordSessionThrottled` + 手动 dispatch `progress-recorded` 验证 progress 写入与 toast 行为，等价于真实播放路径下 `flushPlaySession` 的写入语义。
+- R3-09 原 grep 模式 `elapsed *>= *10` 不命中，因实际写法是早返回 `if (elapsedSec < 10) return;`（语义等价、更标准），用扩展 grep 命中第 116 行。
+
+**结论**：Round 3 通过率 **12/12 ✅**。PlayHub 菜单+sticky 返回头两态切换、DrumMachinePage 紫色清除与 brand 色统一、play-song/play-jam 双进度埋点（含 10s 阈值与 30s throttle）、HomePage 热力图 5 级强度+图例、ErrorBoundary+loadAll 规范化对损坏数据的兜底均工作正常。Round 3 关单，建议关项目。

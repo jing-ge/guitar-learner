@@ -201,3 +201,39 @@ export function getHeatmapDays(days = 30): { date: string; active: boolean; isTo
     };
   });
 }
+
+/* ============ 热力图强度 (4 级) ============ */
+export type HeatLevel = 0 | 1 | 2 | 3 | 4;
+
+function secondsToLevel(seconds: number): HeatLevel {
+  const s = Number(seconds) || 0;
+  if (s < 60) return 0;
+  if (s < 300) return 1;
+  if (s < 900) return 2;
+  if (s < 1800) return 3;
+  return 4;
+}
+
+export function getHeatmapDaysWithIntensity(
+  days = 30,
+): { date: string; level: HeatLevel; isToday: boolean; seconds: number }[] {
+  const recentMap = new Map(loadAll().map(record => [record.date, record]));
+  const todayDate = today();
+
+  return Array.from({ length: days }, (_, index) => {
+    const dateValue = new Date();
+    dateValue.setDate(dateValue.getDate() - (days - 1 - index));
+    const date = dateValue.toISOString().slice(0, 10);
+    const record = recentMap.get(date);
+    // 守卫：sessions 可能不是数组；totalSeconds 可能不是 number
+    const seconds = record && typeof record.totalSeconds === 'number' && isFinite(record.totalSeconds)
+      ? Math.max(0, record.totalSeconds)
+      : 0;
+    return {
+      date,
+      seconds,
+      level: secondsToLevel(seconds),
+      isToday: date === todayDate,
+    };
+  });
+}

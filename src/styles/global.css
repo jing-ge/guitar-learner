@@ -290,12 +290,36 @@ button { font-family: inherit; }
 .heat-cell {
   width: 12px;
   height: 12px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  background: rgba(255,255,255,0.05);
   border: 1px solid var(--line-soft);
+  transition: transform 180ms var(--ease-out);
 }
+.heat-cell.level-1 { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.30); }
+.heat-cell.level-2 { background: rgba(245,158,11,0.42); border-color: rgba(245,158,11,0.48); }
+.heat-cell.level-3 { background: rgba(245,158,11,0.68); border-color: rgba(245,158,11,0.72); }
+.heat-cell.level-4 { background: var(--brand); border-color: var(--brand-strong); box-shadow: 0 0 6px rgba(245,158,11,0.45); }
 .heat-cell.active { background: var(--success); border-color: var(--success); }
-.heat-cell.today { border: 2px solid var(--brand); }
+.heat-cell.today { outline: 2px solid var(--brand); outline-offset: 1px; }
+.heat-cell:hover { transform: scale(1.4); }
+
+.heat-legend {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 8px; margin-bottom: 8px;
+}
+.heat-legend .heat-cell { width: 8px; height: 8px; }
+
+/* PlayHub 入口卡微调（复用 .module-menu-card）*/
+.play-entry-tag-num {
+  display: inline-flex; align-items: center;
+  font-size: 11px; line-height: 16px; font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(245,158,11,0.10);
+  border: 1px solid rgba(245,158,11,0.22);
+  padding: 2px 8px; border-radius: var(--radius-pill);
+  margin-left: 6px;
+}
 .install-bar {
   display: flex;
   align-items: center;
@@ -566,6 +590,11 @@ input, select, textarea { font-size: 16px; }
 [data-theme="light"] .subpage-header {
   background: rgba(255,255,255,0.9);
 }
+[data-theme="light"] .heat-cell { background: rgba(217,119,6,0.08); border-color: rgba(0,0,0,0.05); }
+[data-theme="light"] .heat-cell.level-1 { background: rgba(217,119,6,0.20); }
+[data-theme="light"] .heat-cell.level-2 { background: rgba(217,119,6,0.42); }
+[data-theme="light"] .heat-cell.level-3 { background: rgba(217,119,6,0.65); }
+[data-theme="light"] .heat-cell.level-4 { background: var(--brand); }
 
 /* ============ 指板竖屏模式 ============ */
 .fretboard-vertical-wrap {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { drum, type DrumVoice } from '../audio/drum-machine';
 import { synth } from '../audio/synth';
 import { bass } from '../audio/bass-synth';
+import { recordSession, recordSessionThrottled } from '../utils/progress';
 import {
   DRUM_PATTERNS, FILL_IN, SECTION_DEFAULTS, applySection,
   type DrumPattern, type SectionKind,
@@ -110,9 +111,26 @@ function parseChordId(id: string): { rootPc: number; isMinor: boolean } {
   return { rootPc, isMinor };
 }
 
+/* ============ 试听结算 helper ============ */
+function flushPlaySession(module: 'play-song' | 'play-jam', elapsedSec: number, toastText: string) {
+  if (elapsedSec < 10) return;
+  if (module === 'play-song') {
+    recordSession('play-song', 0, 0, elapsedSec);
+  } else {
+    recordSessionThrottled('play-jam', 0, 0, elapsedSec, 30);
+  }
+  try {
+    window.dispatchEvent(new CustomEvent('progress-recorded', { detail: { text: toastText } }));
+  } catch {
+    /* noop */
+  }
+}
+
 /* ================ 主页 ================ */
-export default function DrumMachinePage() {
-  const [mode, setMode] = useState<Mode>('play-song');
+type DrumMachineProps = { mode?: Mode };
+
+export default function DrumMachinePage({ mode: propMode }: DrumMachineProps = {}) {
+  const mode: Mode = propMode ?? 'play-song';
   const [customs, setCustoms] = useState<CustomDrumPattern[]>(() => loadCustomPatterns());
   const [customProgs, setCustomProgs] = useState<CustomChordProgression[]>(() => loadCustomProgressions());
   const [customStrums, setCustomStrums] = useState<CustomChordStrumPattern[]>(() => loadCustomStrumPatterns());
@@ -128,88 +146,8 @@ export default function DrumMachinePage() {
   const allStrums = useMemo(() => [...CHORD_STRUM_PATTERNS, ...customStrums], [customStrums]);
   const allBass = useMemo(() => [...BASS_PATTERNS, ...customBass], [customBass]);
 
-  const isPlay = mode === 'play-song';
-
-  const LIB_ITEMS: { key: Mode; icon: string; label: string; count: number }[] = [
-    { key: 'lib-drum', icon: '🥁', label: '鼓机节奏', count: customs.length },
-    { key: 'lib-chord', icon: '🎵', label: '和弦走向', count: customProgs.length },
-    { key: 'lib-strum', icon: '🎸', label: '吉他节奏', count: customStrums.length },
-    { key: 'lib-bass', icon: '🎸', label: '贝斯节奏', count: customBass.length },
-  ];
-
   return (
     <div>
-      {/* 顶部主导航 */}
-      <div style={{ display: 'flex', gap: 8, padding: '12px 16px', background: 'linear-gradient(135deg, var(--primary) 0%, #9b59b6 100%)', borderRadius: 12, marginBottom: 12 }}>
-        <button 
-          style={{ 
-            flex: 1, 
-            padding: '12px 16px', 
-            borderRadius: 8, 
-            border: 'none', 
-            background: isPlay ? 'rgba(255,255,255,0.25)' : 'transparent',
-            color: '#fff', 
-            fontSize: 15, 
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            backdropFilter: isPlay ? 'blur(10px)' : 'none',
-          }} 
-          onClick={() => setMode('play-song')}>
-          歌曲合奏
-        </button>
-        <button 
-          style={{ 
-            flex: 1, 
-            padding: '12px 16px', 
-            borderRadius: 8, 
-            border: 'none', 
-            background: !isPlay ? 'rgba(255,255,255,0.25)' : 'transparent',
-            color: '#fff', 
-            fontSize: 15, 
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            backdropFilter: !isPlay ? 'blur(10px)' : 'none',
-          }} 
-          onClick={() => setMode('lib-drum')}>
-          素材库
-        </button>
-      </div>
-      
-      {/* 素材库子导航 */}
-      {!isPlay && (
-        <div style={{ display: 'flex', gap: 6, padding: '8px', background: 'var(--bg-soft)', borderRadius: 10, marginBottom: 12, overflowX: 'auto' }}>
-          {LIB_ITEMS.map(item => (
-            <button 
-              key={item.key} 
-              style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center', 
-                gap: 4,
-                padding: '10px 16px', 
-                borderRadius: 8, 
-                border: 'none', 
-                background: mode === item.key ? 'var(--primary)' : 'transparent',
-                color: mode === item.key ? '#fff' : 'var(--text)', 
-                fontSize: 12, 
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                minWidth: 80,
-              }} 
-              onClick={() => setMode(item.key)}>
-              <span style={{ fontSize: 20 }}>{item.icon}</span>
-              <span>{item.label}</span>
-              {item.count > 0 && (
-                <span style={{ fontSize: 10, opacity: 0.7 }}>({item.count})</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-      
       <div className="hub-content">
         {mode === 'play-song' && <SongArranger allPatterns={allPatterns} allProgressions={allProgressions} allStrums={allStrums} allBass={allBass} />}
         {mode === 'lib-drum' && <CustomEditor customs={customs} onChange={updateCustoms} />}
@@ -234,7 +172,7 @@ function PatternGrid({ pattern, currentStep }: { pattern: DrumPattern; currentSt
             <div style={{ display: 'flex', gap: 2, flex: 1 }}>
               {pattern.grid.map((cell, i) => {
                 const on = cell.includes(v); const isCur = i === currentStep; const isBeat = i % stepsPerBeat === 0;
-                return <div key={i} style={{ flex: 1, minWidth: 14, height: 18, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? (isCur ? 1 : 0.85) : (isBeat ? 0.5 : 0.25), border: isCur ? '2px solid var(--primary)' : '1px solid var(--border)', transform: isCur && on ? 'scale(1.15)' : 'scale(1)', transition: 'all .07s' }} />;
+                return <div key={i} style={{ flex: 1, minWidth: 14, height: 18, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? (isCur ? 1 : 0.85) : (isBeat ? 0.5 : 0.25), border: isCur ? '2px solid var(--brand)' : '1px solid var(--border)', boxShadow: isCur ? '0 0 0 2px rgba(245,158,11,0.45)' : 'none', transform: isCur && on ? 'scale(1.08)' : 'scale(1)', transition: 'transform 70ms var(--ease-out), box-shadow 70ms var(--ease-out)' }} />;
               })}
             </div>
           </div>
@@ -270,11 +208,17 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
   const lastUIRef = useRef({ secIdx: -1, bar: -1, step: -1, chord: '' });
   const songRef = useRef(song); // 播放时使用的歌曲快照
   const playingRef = useRef(playing);
+  const playStartTsRef = useRef<number>(0);
 
   // 播放开始时保存快照，编辑不会中断当前播放
   useEffect(() => {
     if (playing && !playingRef.current) {
       songRef.current = song; // 开始播放时保存快照
+      playStartTsRef.current = Date.now();
+    } else if (!playing && playingRef.current) {
+      // playing: true → false 结算
+      const elapsed = Math.round((Date.now() - playStartTsRef.current) / 1000);
+      flushPlaySession('play-song', elapsed, `🎼 跟伴奏练了 ${elapsed} 秒`);
     }
     playingRef.current = playing;
   }, [playing, song]);
@@ -370,15 +314,15 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
 
   return (
     <>
-      {/* 正在演奏卡片 - 深色渐变背景 */}
-      <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', borderRadius: 16, padding: 20, marginBottom: 12, color: '#fff' }}>
+      {/* 正在演奏卡片 - hero-grad 主品牌 */}
+      <div style={{ background: 'var(--hero-grad)', boxShadow: 'var(--brand-ring)', borderRadius: 'var(--radius-md)', padding: 'var(--space-5)', marginBottom: 12 }}>
         {curSec && curPattern ? (
           <>
-            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>正在演奏</div>
-            <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 4, color: SECTION_DEFAULTS[curSec.kind].color }}>{SECTION_DEFAULTS[curSec.kind].label}</div>
-            <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 8 }}>{curPattern.name} · 第 {curBar + 1}/{curSec.bars} 小节</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 4 }}>正在演奏</div>
+            <div style={{ color: 'var(--text-strong)', fontSize: 28, lineHeight: '36px', fontWeight: 800, marginBottom: 4 }}>{SECTION_DEFAULTS[curSec.kind].label}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>{curPattern.name} · 第 {curBar + 1}/{curSec.bars} 小节</div>
             {globalChord && curChord && (
-              <div style={{ fontSize: 56, fontWeight: 900, color: 'var(--primary)', margin: '8px 0', textShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>
+              <div style={{ fontSize: 48, fontWeight: 900, color: 'var(--brand-strong)', margin: '8px 0', textShadow: '0 2px 12px rgba(245,158,11,0.25)' }}>
                 🎸 {chordDisplayName(curChord)}
               </div>
             )}
@@ -492,6 +436,18 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
   const [playing, setPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
   const [bpm, setBpm] = useState(100);
+
+  const playStartTsRef = useRef(0);
+  const playingRef = useRef(playing);
+  useEffect(() => {
+    if (playing && !playingRef.current) {
+      playStartTsRef.current = Date.now();
+    } else if (!playing && playingRef.current) {
+      const elapsed = Math.round((Date.now() - playStartTsRef.current) / 1000);
+      flushPlaySession('play-jam', elapsed, '🎵 试听记录已保存');
+    }
+    playingRef.current = playing;
+  }, [playing]);
 
   const updateEditing = (patch: Partial<CustomDrumPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomDrumPattern : c)); };
   const addNew = (steps: 16 | 12) => { const p = createEmptyPattern(steps); onChange([...customs, p]); setEditingId(p.id); };
@@ -613,6 +569,18 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
   const [playing, setPlaying] = useState(false);
   const [curIdx, setCurIdx] = useState(-1);
   const [bpm, setBpm] = useState(90);
+
+  const playStartTsRef = useRef(0);
+  const playingRef = useRef(playing);
+  useEffect(() => {
+    if (playing && !playingRef.current) {
+      playStartTsRef.current = Date.now();
+    } else if (!playing && playingRef.current) {
+      const elapsed = Math.round((Date.now() - playStartTsRef.current) / 1000);
+      flushPlaySession('play-jam', elapsed, '🎵 试听记录已保存');
+    }
+    playingRef.current = playing;
+  }, [playing]);
 
   const updateEditing = (patch: Partial<CustomChordProgression>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomChordProgression : c)); };
   const addNew = () => { const p = createEmptyProgression(); onChange([...customs, p]); setEditingId(p.id); };
@@ -760,6 +728,18 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
   const [currentStep, setCurrentStep] = useState(-1); // 当前播放的时间步（用于高亮整列）
   const [bpm, setBpm] = useState(90);
   const [previewChord, setPreviewChord] = useState('C');
+
+  const playStartTsRef = useRef(0);
+  const playingRef = useRef(playing);
+  useEffect(() => {
+    if (playing && !playingRef.current) {
+      playStartTsRef.current = Date.now();
+    } else if (!playing && playingRef.current) {
+      const elapsed = Math.round((Date.now() - playStartTsRef.current) / 1000);
+      flushPlaySession('play-jam', elapsed, '🎵 试听记录已保存');
+    }
+    playingRef.current = playing;
+  }, [playing]);
 
   const updateEditing = (patch: Partial<CustomChordStrumPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomChordStrumPattern : c)); };
   const addNew = (beatsPerBar: 3 | 4 = 4) => { const p = createEmptyStrumPattern(beatsPerBar); onChange([...customs, p]); setEditingId(p.id); };
@@ -947,6 +927,18 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
   const [bpm, setBpm] = useState(90);
   const [previewChord, setPreviewChord] = useState('C');
 
+  const playStartTsRef = useRef(0);
+  const playingRef = useRef(playing);
+  useEffect(() => {
+    if (playing && !playingRef.current) {
+      playStartTsRef.current = Date.now();
+    } else if (!playing && playingRef.current) {
+      const elapsed = Math.round((Date.now() - playStartTsRef.current) / 1000);
+      flushPlaySession('play-jam', elapsed, '🎵 试听记录已保存');
+    }
+    playingRef.current = playing;
+  }, [playing]);
+
   const updateEditing = (patch: Partial<CustomBassPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomBassPattern : c)); };
   const addNew = (beatsPerBar: 3 | 4 = 4) => { const p = createEmptyBassPattern(beatsPerBar); onChange([...customs, p]); setEditingId(p.id); };
   const cloneFrom = (src: BassPattern) => { const p = cloneBassPattern(src); onChange([...customs, p]); setEditingId(p.id); };
@@ -1069,7 +1061,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
           {/* 网格编辑器 - 和鼓机一样的风格 */}
           {['R','5','3','O','L','X'].map(noteType => {
             const NOTE_LABEL_FULL: Record<string, string> = { R: 'R 根音', '5': '5 五度', '3': '3 三度', O: 'O 高八度', L: 'L 低八度', X: 'X 休止' };
-            const NOTE_COLOR: Record<string, string> = { R: '#e74c3c', '5': '#3498db', '3': '#27ae60', O: '#9b59b6', L: '#8e44ad', X: '#7f8c8d' };
+            const NOTE_COLOR: Record<string, string> = { R: '#e74c3c', '5': '#3498db', '3': '#27ae60', O: '#a16207', L: '#8e44ad', X: '#7f8c8d' };
             const totalSteps = editing.beatsPerBar * 4; // 每拍4个细分
             
             return (

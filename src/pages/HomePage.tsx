@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { getHeatmapDays, getPracticeSummary, getTodayStats } from '../utils/progress';
+import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats } from '../utils/progress';
 
 const MODULE_CARDS = [
   {
@@ -137,7 +137,7 @@ function HomePageInner() {
   const { deferredPrompt, isStandalone, isIOS, isAndroid, install } = useInstallInfo();
   const today = getTodayStats();
   const summary = getPracticeSummary();
-  const heatmapDays = useMemo(() => getHeatmapDays(30), []);
+  const heatmapDays = useMemo(() => getHeatmapDaysWithIntensity(30), []);
   const primaryAction = getPrimaryAction(summary);
   const greeting = getGreeting(summary);
   const recommendText = getRecommendation(summary, today);
@@ -209,14 +209,23 @@ function HomePageInner() {
           {heatmapDays.map((day) => (
             <div
               key={day.date}
-              title={day.date}
-              className={[
-                'heat-cell',
-                day.active ? 'active' : '',
-                day.isToday ? 'today' : '',
-              ].filter(Boolean).join(' ')}
+              title={`${day.date} · ${Math.round(day.seconds / 60)} 分钟`}
+              className={
+                'heat-cell ' +
+                (day.isToday ? 'today ' : '') +
+                'level-' + day.level
+              }
             />
           ))}
+        </div>
+        <div className="heat-legend">
+          <span>少</span>
+          <span className="heat-cell level-0" />
+          <span className="heat-cell level-1" />
+          <span className="heat-cell level-2" />
+          <span className="heat-cell level-3" />
+          <span className="heat-cell level-4" />
+          <span>多</span>
         </div>
         <p>
           已累计练习 {summary.totalDays} 天，共 {summary.totalMinutes} 分钟。
