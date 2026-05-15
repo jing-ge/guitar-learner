@@ -453,34 +453,224 @@ button { font-family: inherit; }
   gap: 10px;
 }
 .chord-card {
-  background: linear-gradient(180deg, var(--bg-elev-2) 0%, rgba(17,24,43,0.88) 100%);
-  border-radius: 10px;
+  background: linear-gradient(160deg, #1F2A3F 0%, #141B2A 100%);
+  border-radius: var(--radius-md);
   padding: 10px 8px 8px;
   text-align: center;
   color: var(--text-strong);
   cursor: pointer;
-  transition: transform .15s;
+  transition: transform 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
   position: relative;
   border: 1px solid var(--line-soft);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255,255,255,0.06),
+    0 4px 12px rgba(0,0,0,0.18);
 }
+.chord-card:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.08), 0 6px 18px rgba(0,0,0,0.28); }
 .chord-card:active { transform: scale(0.97); }
-.chord-card .chord-name { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.chord-card .chord-name {
+  font-size: 13px; line-height: 18px; color: var(--text-muted); margin-top: 4px;
+}
 .chord-card .diff {
   position: absolute; top: 6px; right: 8px;
-  font-size: 11px; color: var(--text-dim);
+  font-size: 11px; color: var(--text-muted);
 }
+/* 难度圆点（5 个） */
+.chord-difficulty-dots {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: inline-flex;
+  gap: 3px;
+}
+.chord-difficulty-dots .dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  display: inline-block;
+}
+.chord-difficulty-dots .dot.on { background: var(--brand); box-shadow: 0 0 4px rgba(245,158,11,0.55); }
+.chord-difficulty-dots .dot.off { background: rgba(255,255,255,0.18); }
+
 .chord-detail {
   display: flex; flex-direction: column; align-items: center;
-  background: linear-gradient(180deg, var(--bg-elev-2) 0%, rgba(17,24,43,0.92) 100%);
+  background: var(--bg-elev-2);
   color: var(--text-strong);
   border: 1px solid var(--line-soft);
-  border-radius: 12px; padding: 14px 10px;
+  border-radius: var(--radius-lg);
+  padding: 20px;
   margin-bottom: 12px;
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.04);
 }
 .chord-detail h2 { color: var(--text-strong); }
 .chord-detail .tips {
   margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--text-body);
   text-align: center; max-width: 340px;
+}
+
+/* ============ 按弦顺序 ChordHowTo ============ */
+.chord-howto {
+  width: 100%;
+  max-width: 340px;
+  margin: 14px auto 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0,0,0,0.22);
+  border: 1px solid var(--line-soft);
+}
+.chord-howto-title {
+  font-size: 14px; line-height: 22px; font-weight: 700;
+  color: var(--text-strong); margin-bottom: 6px;
+}
+.chord-howto-list {
+  display: flex; flex-direction: column; gap: 4px;
+}
+.chord-howto-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; line-height: 20px; font-weight: 400;
+  color: var(--text-body);
+}
+.chord-howto-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--brand); color: #1F1500;
+  font-size: 11px; font-weight: 800;
+  flex-shrink: 0;
+}
+.chord-howto-text { flex: 1; }
+.chord-howto-misc {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line-soft);
+  font-size: 12px; line-height: 18px; color: var(--text-muted);
+  display: flex; flex-wrap: wrap; gap: 12px;
+}
+.chord-howto-misc b { color: var(--text-body); font-weight: 600; margin-right: 4px; }
+
+/* ============ 图例 ChordLegend ============ */
+.chord-legend {
+  width: 100%;
+  max-width: 340px;
+  margin: 10px auto 0;
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font-size: 12px; line-height: 18px; font-weight: 500;
+  color: var(--text-muted);
+}
+.chord-legend .cl-item { display: inline-flex; align-items: center; gap: 4px; }
+.chord-legend .cl-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+}
+.chord-legend .cl-dot-press {
+  background: #F59E0B; box-shadow: 0 0 0 1px #FFB938;
+}
+.chord-legend .cl-x { color: #FB7185; font-weight: 800; }
+.chord-legend .cl-o { color: #34D399; font-weight: 700; }
+.chord-legend .cl-bar {
+  display: inline-block; width: 18px; height: 6px;
+  border-radius: 3px; background: #F59E0B; box-shadow: 0 0 0 1px #FFB938;
+}
+
+/* ============ 副页 Hero ============ */
+.subpage-hero {
+  position: relative;
+  margin: 0 0 16px;
+  padding: 18px 18px 14px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(245,158,11,0.22) 0%, transparent 55%),
+    radial-gradient(80% 80% at 100% 0%, rgba(34,211,238,0.14) 0%, transparent 60%),
+    linear-gradient(180deg, #1A2237 0%, #0F1626 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  animation: pageEnterSub 240ms var(--ease-out);
+}
+.sh-eyebrow {
+  font-size: 11px; line-height: 16px; font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--brand-strong);
+  text-transform: uppercase;
+}
+.sh-title {
+  font-size: 22px; line-height: 28px; font-weight: 800;
+  color: var(--text-strong);
+  margin: 2px 0 2px;
+}
+.sh-desc {
+  font-size: 13px; line-height: 20px; color: var(--text-body);
+  margin: 0 0 12px;
+}
+.sh-right { position: absolute; top: 14px; right: 14px; }
+
+/* segmented control（圆角胶囊式分段选择器） */
+.subpage-segmented {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(0,0,0,0.32);
+  border: 1px solid rgba(255,255,255,0.06);
+  gap: 2px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.subpage-segmented::-webkit-scrollbar { display: none; }
+.subpage-segmented button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms var(--ease-out), color 180ms var(--ease-out), box-shadow 180ms var(--ease-out);
+}
+.subpage-segmented button:hover { color: var(--text-body); }
+.subpage-segmented button.active {
+  background: var(--brand);
+  color: #1F1500;
+  box-shadow: 0 4px 12px rgba(245,158,11,0.32);
+}
+
+/* tabs（下划线式横向切换） */
+.subpage-tabs {
+  display: flex; gap: 24px;
+  border-bottom: 1px solid var(--line-soft);
+  margin: 12px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.subpage-tabs::-webkit-scrollbar { display: none; }
+.subpage-tabs button {
+  position: relative;
+  padding: 10px 0 12px;
+  border: none; background: transparent;
+  color: var(--text-muted);
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color 180ms var(--ease-out);
+}
+.subpage-tabs button:hover { color: var(--text-body); }
+.subpage-tabs button.active { color: var(--text-strong); }
+.subpage-tabs button.active::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 0; right: 0;
+  height: 2px; border-radius: 1px;
+  background: var(--brand);
+  animation: tabSlide 220ms var(--ease-out);
+}
+.subpage-tabs-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,0.08);
+  font-size: 10px; font-weight: 700;
+  color: var(--text-muted);
+}
+.subpage-tabs button.active .subpage-tabs-count {
+  background: rgba(245,158,11,0.18); color: var(--brand-strong);
+}
+@keyframes tabSlide {
+  from { transform: scaleX(0); transform-origin: left; }
+  to { transform: scaleX(1); transform-origin: left; }
 }
 
 /* ============ 节拍器 ============ */
@@ -596,6 +786,49 @@ input, select, textarea { font-size: 16px; }
 [data-theme="light"] .heat-cell.level-3 { background: rgba(217,119,6,0.65); }
 [data-theme="light"] .heat-cell.level-4 { background: var(--brand); }
 
+/* ============ Round 4: light theme - chord 新组件 ============ */
+[data-theme="light"] .chord-card {
+  background: linear-gradient(160deg, #FFFFFF 0%, #F1F5F9 100%);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(15,23,42,0.04),
+    0 4px 12px rgba(15,23,42,0.06);
+}
+[data-theme="light"] .chord-card:hover {
+  box-shadow: inset 0 0 0 0.5px rgba(15,23,42,0.08), 0 6px 18px rgba(15,23,42,0.12);
+}
+[data-theme="light"] .chord-detail {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  box-shadow: inset 0 0 0 0.5px rgba(15,23,42,0.04);
+}
+[data-theme="light"] .chord-howto {
+  background: rgba(15,23,42,0.04);
+}
+[data-theme="light"] .chord-difficulty-dots .dot.off {
+  background: rgba(15,23,42,0.18);
+}
+
+[data-theme="light"] .subpage-hero {
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(217,119,6,0.18) 0%, transparent 55%),
+    radial-gradient(80% 80% at 100% 0%, rgba(8,145,178,0.10) 0%, transparent 60%),
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+  border: 1px solid rgba(0,0,0,0.06);
+}
+[data-theme="light"] .subpage-segmented {
+  background: rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.05);
+}
+[data-theme="light"] .subpage-segmented button.active {
+  color: #1F1500;
+}
+[data-theme="light"] .subpage-tabs-count {
+  background: rgba(15,23,42,0.06);
+}
+[data-theme="light"] .subpage-tabs button.active .subpage-tabs-count {
+  background: rgba(217,119,6,0.14);
+  color: var(--brand-strong);
+}
+
 /* ============ 指板竖屏模式 ============ */
 .fretboard-vertical-wrap {
   background: var(--bg-card); border: 1px solid var(--line-soft);
@@ -645,6 +878,59 @@ input, select, textarea { font-size: 16px; }
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* ========== Hub Tabs（学习中心 5 个一级 tab）========== */
+.hub-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  margin: 0 0 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev-1);
+  border: 1px solid var(--line-soft);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.hub-tabs::-webkit-scrollbar { display: none; }
+
+.hub-tab {
+  flex: 1 0 auto;
+  min-width: 60px;
+  min-height: 52px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms var(--ease-out), color 180ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.hub-tab:hover { color: var(--text-body); }
+.hub-tab:active { transform: scale(0.97); }
+.hub-tab.active {
+  background: var(--brand);
+  color: #1F1500;
+  box-shadow: 0 4px 12px rgba(245,158,11,0.32);
+}
+.hub-tab .hub-tab-icon { font-size: 18px; line-height: 1; }
+.hub-tab .hub-tab-label { font-size: 12px; line-height: 14px; }
+
+[data-theme="light"] .hub-tabs {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .hub-tab.active {
+  color: #1F1500;
 }
 
 /* ========== 学习中心副标题 ========== */

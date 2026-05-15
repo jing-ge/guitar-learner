@@ -246,3 +246,52 @@ MIT License
 - R3-09 原 grep 模式 `elapsed *>= *10` 不命中，因实际写法是早返回 `if (elapsedSec < 10) return;`（语义等价、更标准），用扩展 grep 命中第 116 行。
 
 **结论**：Round 3 通过率 **12/12 ✅**。PlayHub 菜单+sticky 返回头两态切换、DrumMachinePage 紫色清除与 brand 色统一、play-song/play-jam 双进度埋点（含 10s 阈值与 30s throttle）、HomePage 热力图 5 级强度+图例、ErrorBoundary+loadAll 规范化对损坏数据的兜底均工作正常。Round 3 关单，建议关项目。
+
+### Round 4 — 2026-05-15
+**主题**：直接回应用户两条核心吐槽 —— 和弦库视觉大修 + 顶部 UI 重做（不动识别引擎，留 R5）
+
+**改动文件**：
+- 新增：`src/components/ChordHowTo.tsx`、`src/components/ChordLegend.tsx`、`src/components/SubpageHero.tsx`
+- 修改：`src/components/ChordDiagram.tsx`、`src/pages/ChordsPage.tsx`、`src/styles/global.css`
+
+**产品要点**：
+- ChordDiagram 默认 `colorMode='dark'`（之前默认 light → 黑线黑点画在深底完全看不清）
+- 指板暖木色 `#2A2118` + 弦米色 `#E7DBC7` + 按弦点橙色 `#F59E0B`（带 stroke `#FFB938` + drop-shadow filter）
+- 圆点 r 从 0.058→0.072，手指字号 0.085；横按 opacity 1.0
+- × 红粉 `#FB7185` / ○ 双圈（外 r=9.9 + 内 r=6.16）
+- 新增 ChordHowTo 中文按弦顺序说明 + ChordLegend 5 项图例
+- 顶部 PageMode chip-row → SubpageHero（双 radial-gradient 橙青渐变）+ subpage-segmented（丸药容器，active 项橙底深色文字 + 阴影）
+- 分类 chip-row → subpage-tabs（横向 tabs + count badge + active 项 ::after 橙色下划线 + transition 滑入动画）
+- 难度 ★★★☆☆ → 5 圆点（满灰对比，aria-label "难度 N/5"）
+
+**开发要点**：
+- `useId` 给每个 ChordDiagram SVG 生成唯一 filter id（13 个 SVG → 13 个唯一 id `cd-shadow-rXX`）
+- ChordHowTo 派生算法：从 `frets` / `fingers` / `barre` 生成中文，自动推断 barreFinger（"食指 → 6弦 1品（横按 1-6 弦）"），并按 `不弹 / 空弦` 汇总到底部 misc 行
+- light 主题等价配色（hero 渐变改弱：橙 0.18 / 青 0.10）；ChordDiagram 暖木深底在浅卡上仍清晰（指板与卡背反向高对比）
+
+**测试结果**（12 用例，移动端 390x844 视口，dev 端口 5176，控制台 errors 全程为 0）：
+
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R4-01 | 默认 dark colorMode | ✅ | 进入 `/#/learn` 默认在和弦 tab；DOM 扫描首张 svg 子元素：背景 rect fill = `#2A2118`，按弦圆点 fill = `#F59E0B` + stroke = `#FFB938` + r ≈ 15.84 + filter = `url(#cd-shadow-r1)`，弦线 stroke = `#E7DBC7`。 |
+| R4-02 | 详情卡新视觉 + filter id 唯一 | ✅ | 详情大图 220×220（`.chord-detail svg`）背景 `#2A2118`、橙色按弦点带 shadow filter；`document.querySelectorAll('filter[id^="cd-shadow"]')` 共 **13** 个，`new Set(...).size === 13`，**唯一性通过**。 |
+| R4-03 | 横按和弦清晰（F） | ✅ | 切到"横按和弦"（count 7）后点 F；详情 SVG 内除了背景 rect 外还有一根 rect：fill = `#F59E0B`、width ≈ 173.7、height ≈ 19.4、rx ≈ 9.7、filter = `url(#cd-shadow-r1)`，**无 opacity 属性**（即 1.0）；横按上的子指法（1/3/4/2 数字圆点）清晰可见。 |
+| R4-04 | ChordHowTo 文字说明 | ✅ | F：标题 "🎸 按弦顺序"、第一行 "食指 → 6弦 1品（横按 1-6 弦）"，①②③④ 圆点 background-color = `rgb(245,158,11)`（即 `#F59E0B`），border-radius 50%，18×18px；切回 C 验证 misc：`不弹：6弦` + `空弦：3弦 1弦`。 |
+| R4-05 | ChordLegend 图例 | ✅ | `.chord-legend` 含 5 项："按弦点 / 数字=手指（1食 2中 3无 4小） / × 不弹 / ○ 空弦 / 横按"，与详情卡底部对齐。 |
+| R4-06 | 难度 5 圆点 | ✅ | 缩略卡含 `<div class="chord-difficulty-dots" aria-label="难度 1/5">` 内嵌 5 个 `<span class="dot {on,off}">`（C 为 1 on + 4 off）；全卡 innerHTML **不含** `★` / `☆`。 |
+| R4-07 | SubpageHero 首屏 | ✅ | `.subpage-hero` background-image 含 **两个 radial-gradient**（橙 `rgba(245,158,11,0.22)` + 青 `rgba(34,211,238,0.14)`）+ linear base；eyebrow = "LEARN · CHORDS"、title = "和弦库" font-size **22px**、desc = "47+ 常用和弦 · 按弦图 + 文字说明"。 |
+| R4-08 | subpage-segmented 切换 | ✅ | `.subpage-segmented` border-radius 999px（丸药）；active 项 bg = `rgb(245,158,11)`、color = `rgb(31,21,0)`、box-shadow = `rgba(245,158,11,0.32) 0px 4px 12px`；切到第 2/3 段时 hero 标题/描述同步：和弦库→和弦转换（"跟节拍器练习平滑切换"）→弹琴检测（"对着麦克风弹，AI 听你按对没"）。 |
+| R4-09 | subpage-tabs 分类下划线动画 | ✅ | `.subpage-tabs` overflow-x = auto；4 个 tab 都带 count badge（12 / 7 / 19 / 9）；active tab 的 `::after` 伪元素：content = `""`、background = `rgb(245,158,11)`、height = 2px、position = absolute、bottom = -1px、left/right = 0、transition = `all`（滑入动画）。 |
+| R4-10 | light 主题等价 | ✅ | `data-theme="light"` 后 hero linear base = `rgb(255,255,255)→rgb(248,250,252)`，gradient 弱化为 `rgba(217,119,6,0.18)` / `rgba(8,145,178,0.10)`；body bg = `rgb(246,248,251)`；ChordDiagram SVG 背景仍 `#2A2118`（按规格强制 dark），在浅卡上反向高对比仍清晰；console errors = 0。 |
+| R4-11 | ChordsPage ChordDiagram 显式 dark | ✅ | `grep -n "ChordDiagram" src/pages/ChordsPage.tsx`：4 处 JSX 调用（line 164 / 290 / 321 / 494，对应 size 200/220/120/160），**每处都含 `colorMode="dark"`**；line 2 是 import 语句。 |
+| R4-12 | ChordsPage 无旧浅色硬编码 | ✅ | `grep -nE "#475569\|#1f2937\|#6b7280" src/pages/ChordsPage.tsx` 返回 **0 命中**（exit=1）。 |
+
+**控制台 errors 汇总**：全 12 用例均无 error（运行期 `window.__r4_errors.length === 0`）。
+
+**截图目录**：`/tmp/guitar-test/round4/`（R4-01 至 R4-12，含 R4-08 的 3 张分模式截图，共 12 张实测 + 1 张 debug）。
+
+**已知遗留 / 留给 R5**：
+- 识别引擎（chord-detect / 弹琴检测的音频→和弦推断准确率）按用户要求本轮**不动**，留待 R5。
+- light 主题下 ChordDiagram 仍保持 dark 暖木风格（强制 `colorMode="dark"`），是产品决策不是 bug —— 浅卡反向对比清晰，但若后续要做"主题完全跟随"可在 R5 加 `colorMode="auto"` 选项。
+
+**结论**：Round 4 通过率 **12/12 ✅**。两条核心吐槽（"和弦库看不清按法 + 顶部 UI 丑"）均已闭环：ChordDiagram 暖木+橙点+stroke+shadow 立体可辨、ChordHowTo+ChordLegend 中文说明+图例、SubpageHero+segmented+subpage-tabs 顶部 UI 重做。Round 4 关单，**建议进入 Round 5（识别引擎准确率攻坚）**。

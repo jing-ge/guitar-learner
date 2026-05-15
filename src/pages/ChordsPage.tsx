@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ChordDiagram from '../components/ChordDiagram';
+import ChordHowTo from '../components/ChordHowTo';
+import ChordLegend from '../components/ChordLegend';
+import SubpageHero from '../components/SubpageHero';
 import { CHORDS, type ChordDef, chordPlayablePositions, chordsByCategory } from '../theory/chords';
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
@@ -24,8 +27,27 @@ async function probeMic(): Promise<'granted' | 'denied' | 'error'> {
 
 type PageMode = 'browse' | 'switch' | 'detect';
 
+const MODE_META: Record<PageMode, { label: string; title: string; desc: string }> = {
+  browse: {
+    label: '📖 和弦库',
+    title: '和弦库',
+    desc: `${CHORDS.length}+ 常用和弦 · 按弦图 + 文字说明`,
+  },
+  switch: {
+    label: '🔄 转换练习',
+    title: '和弦转换',
+    desc: '跟节拍器练习平滑切换',
+  },
+  detect: {
+    label: '🎤 弹琴检测',
+    title: '弹琴检测',
+    desc: '对着麦克风弹，AI 听你按对没',
+  },
+};
+
 export default function ChordsPage() {
   const [pageMode, setPageMode] = useState<PageMode>('browse');
+  const modes: PageMode[] = ['browse', 'switch', 'detect'];
 
   // 切走时停止检测
   useEffect(() => {
@@ -34,11 +56,25 @@ export default function ChordsPage() {
 
   return (
     <div>
-      <div className="chip-row" style={{ marginBottom: 12 }}>
-        <button className={'chip' + (pageMode === 'browse' ? ' active' : '')} onClick={() => setPageMode('browse')}>📖 和弦库</button>
-        <button className={'chip' + (pageMode === 'switch' ? ' active' : '')} onClick={() => setPageMode('switch')}>🔄 转换练习</button>
-        <button className={'chip' + (pageMode === 'detect' ? ' active' : '')} onClick={() => setPageMode('detect')}>🎤 弹琴检测</button>
-      </div>
+      <SubpageHero
+        eyebrow="LEARN · CHORDS"
+        title={MODE_META[pageMode].title}
+        desc={MODE_META[pageMode].desc}
+      >
+        <div className="subpage-segmented" role="tablist">
+          {modes.map(m => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={pageMode === m}
+              className={pageMode === m ? 'active' : ''}
+              onClick={() => setPageMode(m)}
+            >
+              {MODE_META[m].label}
+            </button>
+          ))}
+        </div>
+      </SubpageHero>
       {pageMode === 'browse' && <ChordBrowser />}
       {pageMode === 'switch' && <ChordSwitchDrill />}
       {pageMode === 'detect' && <ChordDetect />}
@@ -232,11 +268,18 @@ function ChordBrowser() {
 
   return (
     <div>
-      {/* 分类筛选 */}
-      <div className="chip-row" style={{ marginBottom: 12 }}>
+      {/* 分类切换：subpage-tabs 风格 */}
+      <div className="subpage-tabs" role="tablist">
         {categories.map(c => (
-          <button key={c} className={'chip' + (c === activeCat ? ' active' : '')} onClick={() => setActiveCat(c)}>
+          <button
+            key={c}
+            role="tab"
+            aria-selected={c === activeCat}
+            className={c === activeCat ? 'active' : ''}
+            onClick={() => setActiveCat(c)}
+          >
             {c}
+            <span className="subpage-tabs-count">{grouped[c]?.length || 0}</span>
           </button>
         ))}
       </div>
@@ -244,11 +287,13 @@ function ChordBrowser() {
       {/* 当前选中和弦详情 */}
       {selected && (
         <div className="chord-detail">
-          <ChordDiagram shape={selected.shapes[0]} size={220} title={selected.name} />
+          <ChordDiagram shape={selected.shapes[0]} size={220} title={selected.name} colorMode="dark" />
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
             {selected.fullName} · 难度 {'★'.repeat(selected.difficulty)}{'☆'.repeat(5 - selected.difficulty)}
           </div>
           {selected.tips && <div className="tips">💡 {selected.tips}</div>}
+          <ChordHowTo shape={selected.shapes[0]} />
+          <ChordLegend />
           <div className="btn-row" style={{ marginTop: 12 }}>
             <button className="btn btn-primary btn-sm" onClick={() => playStrum(selected, 'down')}>
               ⬇ 下扫
@@ -268,8 +313,12 @@ function ChordBrowser() {
       <div className="chord-grid">
         {(grouped[activeCat] || []).map(c => (
           <div key={c.id} className="chord-card" onClick={() => setSelected(c)}>
-            <div className="diff">{'★'.repeat(c.difficulty)}</div>
-            <ChordDiagram shape={c.shapes[0]} size={120} title={c.name} />
+            <div className="chord-difficulty-dots" aria-label={`难度 ${c.difficulty}/5`}>
+              {Array.from({ length: 5 }, (_, i) => (
+                <span key={i} className={'dot ' + (i < c.difficulty ? 'on' : 'off')} />
+              ))}
+            </div>
+            <ChordDiagram shape={c.shapes[0]} size={120} title={c.name} colorMode="dark" />
             <div className="chord-name">{c.fullName}</div>
           </div>
         ))}
