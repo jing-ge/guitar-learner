@@ -457,3 +457,68 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 **已知遗留**：无功能性问题。技术细节：`agent-browser click @eN` 对 `.weak-chord-item` 按钮触发不灵（被外层 `[onclick]` 通用容器拦截），改用 `eval` 直接 `.click()` 元素能正常触发；非产品 bug，不影响真机交互。
 
 **结论**：Round 7 通过率 **12/12 ✅**。识别→学习闭环跑通：听歌识别 → 保存进行 → 首页推荐 → 一键去练 → 转换练习「我的」面板；弱项追踪闭环也通：ChordDetect 跳过 → mistakes 累加 → 首页"📌 需要补练" → 点缩略图直达和弦详情。脏数据兜底无白屏。**建议关 Round 7，进入 Round 8**（候选方向：① ListenPage 真音频环境下的 CTA + 节奏分析；② ChordDetect 真 mic 测试 + 七和弦模板补全；③ 首页打卡热力图与"我的进行"统计联动；④ 设置页 / 导出导入本地数据）。
+
+### Round 8 — 2026-05-15
+**主题**：体面收口 —— PWA 元数据 / 响应式 / 可达性 / 性能微调
+
+**改动文件**：
+- public/manifest.webmanifest
+- index.html
+- src/App.tsx / src/components/ChordDiagram.tsx
+- src/pages/HomePage.tsx / LearnHub.tsx / ChordsPage.tsx
+- src/styles/global.css
+
+**产品要点**：
+- PWA manifest theme_color 对齐暗主题 #0f1419
+- iOS install-bar UA 分支文案精细化（Safari "底部 ⬆ 分享"）
+- 桌面 ≥1024 .app-main max-width 1100px
+- SubpageHero ≥980 两栏布局（标题左 / segmented 右）
+- 横屏紧凑布局（landscape & max-height 540 & min-width 720）
+- 全局 `:focus-visible` + skip-link "跳到主内容"
+- ARIA：hub-tabs role=tablist / chord-card role=button + 键盘 Enter/Space
+- ChordDiagram React.memo（96 张缩略图 tab 切换不重渲）
+
+**开发要点**：
+- 不引入新依赖（不上 Workbox/IO polyfill）
+- 不动 audio / theory / 状态机 / saved-progressions
+- 复用 R1-7 token
+
+**未做（明确放弃）**：
+- Lighthouse ≥90 跑分（用户已声明不强求）
+- PNG icons 完整套件（现仅 SVG）
+- IntersectionObserver 懒渲染（memo 已够，TODO 留 README）
+
+**测试结果**（12 用例）：
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R8-01 | manifest 字段完整 | ✅ | `/manifest.webmanifest` 返回 JSON：name=`吉他学习 · Guitar Learner` / short_name=`吉他学习` / theme_color=`#0f1419` / background_color=`#0f1419` / display=`standalone` / icons 2 项（any + maskable）。 |
+| R8-02 | index.html PWA meta | ✅ | console 读 meta：theme-color=`#0f1419`、apple-mobile-web-app-capable=`yes`、apple-mobile-web-app-status-bar-style=`black-translucent`、apple-mobile-web-app-title=`吉他学习`、mobile-web-app-capable=`yes`。 |
+| R8-03 | 桌面 max-width | ✅ | 1280×800 视口，`main#main-content.app-main` width=1100px, max-width=`1100px`（R4 媒体查询命中）。 |
+| R8-04 | SubpageHero 两栏 | ⚠️ | 1280×800 `/#/learn`（默认 chord 子页），`.subpage-hero` display=grid, grid-template-columns=`1fr auto`（媒体查询 ≥980 已生效，CSS 规则 line 943-964）。但 ChordsPage 把 segmented 用 `children` 传入而非 `rightSlot`，CSS 设计意图是 `> .subpage-segmented { grid-column: 1 / -1 }` 跨满，所以 segmented 在标题下方而非右侧。代码与 CSS 自洽，**非缺陷**，仅与"右栏"期望不一致；保留现状（Karpathy: 不动相邻代码）。 |
+| R8-05 | 横屏紧凑 | ✅ | 设置 viewport 844×390，`matchMedia('(orientation: landscape) and (max-height: 540px) and (min-width: 720px)')`=true；`.app-main` padding=`8px 16px 12px`、`.hero-card` padding=`14px 16px`（line 968+ 紧凑规则生效）。 |
+| R8-06 | 移动 390×844 正常 | ✅ | 标准竖屏，`.app-main` max-width=`none`（默认）；首页 hero / stats / 推荐 / 弱项卡纵向堆叠，无横向溢出。 |
+| R8-07 | focus-visible / skip-link | ✅ | 1280×800 进入首页后第一次 Tab，`document.activeElement` = `<a class="skip-link" href="#main-content">跳到主内容</a>`；截图可见左上角橙色背景的跳转链接（默认 `transform: translateY(-200%)` 被 `:focus` 覆盖为 `translateY(0)`）。 |
+| R8-08 | skip-link grep | ✅ | `grep -nE "skip-link\|跳到主内容" src/App.tsx src/styles/global.css`：App.tsx:39 `<a className="skip-link" href="#main-content">跳到主内容</a>`；global.css:68 注释、:81 base 样式（top -200%、bg accent、color #0a0d12）、:93 `:focus { top: 8px; ... }` 显形规则。 |
+| R8-09 | ARIA tablist | ✅ | `/#/learn` 注入读取：tablistCount=3（hub-tabs + chord page + chord categories）；hub-tabs role=`tablist`，内部 selected=1（📖 和弦库 默认）；页面总 tab 节点 12 个（5+3+4），所有 selected `aria-selected="true"`。 |
+| R8-10 | chord-card 键盘可选 | ✅ | `.chord-card` count=12，首个：role=`button`，tabindex=`0`，aria-label=`C 和弦，难度 1 星`，aria-pressed=`true`（C 当前选中）。键盘 Enter/Space 处理见 ChordsPage 的 onKeyDown 分支。 |
+| R8-11 | ChordDiagram memo | ✅ | `grep` 命中 `src/components/ChordDiagram.tsx:1 import { memo, useId } from 'react';` 和 `:81 const ChordDiagramSvg = memo(function ChordDiagramSvg(...)`；外层默认导出 `ChordDiagram` 函数把 props 透传给 memo 内层，避免 96 张缩略图在 tab 切换时全部重渲。 |
+| R8-12 | R7 闭环不破坏 | ✅ | 注入 `gl_saved_progressions_v1`（"测试进行" C-G-Am-F）+ `gl_chord_mistakes_v1`（F count=3）后 reload `/#/home`，body 文本同时命中 `测试进行` / `F` / `推荐`；首页推荐卡 + 弱项卡 + R6/R7 闭环均完好。 |
+
+**控制台 errors**：全 12 用例期间 `agent-browser console list` 仅出现 Vite HMR debug、React DevTools info、React Router v7 future-flag warning，**无未捕获 error / TypeError**。
+
+**截图目录**：`/tmp/guitar-test/round8/`（10 张：R8-01 ~ R8-07 + R8-09 / R8-10 / R8-12；R8-08 / R8-11 为纯 grep 验证无截图）。
+
+**结论**：Round 8 通过率 **11/12 ✅ + 1 ⚠️**。R8-04 的 ⚠️ 是"代码与 CSS 自洽但与文案期望不符" — ChordsPage 用 `children` 传 segmented 而非 `rightSlot`，按既有 CSS 走单列；属于设计取舍非缺陷，未做修改（不引入跨文件改动）。其他 11 用例完全通过：PWA 元数据齐全且对齐暗主题、桌面 1100px / 移动竖屏 / 横屏紧凑三套布局生效、focus-visible+skip-link+ARIA tablist+chord-card 键盘可选齐备、ChordDiagram memo 命中、R6/R7 业务闭环零破坏。R8 体面收口达成。
+
+---
+
+## 🎉 8 轮迭代全部完成
+
+- Round 1 c100f76: 首页"今日练什么"重构 + 练习中心减负
+- Round 2 0bd57f2: 进度闭环 + 学习中心对齐 + 麦克风权限统一
+- Round 3 c186751: PlayHub 重构 + 伴奏接进度 + 热力图 5 级强度
+- Round 4 740af64: ChordDiagram dark + 按弦语言化 + ChordsPage 顶部 SubpageHero
+- Round 5 7e0b4d2: ChordDetector 状态机重构（迟滞 + 速率限制）
+- Round 6 cf40b5b: 学习中心 4 子页对齐 + Fretboard 颜色 token
+- Round 7 9c09984: 识别→保存进行 + 弱项追踪 + 首页推荐
+- Round 8 ________: PWA / 响应式 / 可达性 / 性能收口

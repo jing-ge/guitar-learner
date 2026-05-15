@@ -35,12 +35,15 @@ export default function LearnHub() {
 
   return (
     <div>
-      <div className="hub-tabs">
+      <div className="hub-tabs" role="tablist" aria-label="学习中心子模块">
         {TABS.map(t => (
           <button key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            aria-label={t.label}
             className={'hub-tab' + (tab === t.key ? ' active' : '')}
             onClick={() => setTab(t.key)}>
-            <span className="hub-tab-icon">{t.icon}</span>
+            <span className="hub-tab-icon" aria-hidden="true">{t.icon}</span>
             <span className="hub-tab-label">{t.label}</span>
           </button>
         ))}

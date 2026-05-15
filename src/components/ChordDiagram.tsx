@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { memo, useId } from 'react';
 import type { ChordShape } from '../theory/chords';
 
 export interface ChordDiagramProps {
@@ -65,6 +65,20 @@ function getPalette(mode: 'light' | 'dark') {
 }
 
 export default function ChordDiagram({
+  shape,
+  size = 160,
+  title,
+  showFingers = true,
+  colorMode = 'dark',
+}: ChordDiagramProps) {
+  return <ChordDiagramSvg shape={shape} size={size} title={title} showFingers={showFingers} colorMode={colorMode} />;
+}
+
+/**
+ * 真正的渲染体放在 memo 里：和弦库 96 张在分类切换/重渲染时避免全部重画。
+ * shape 在 theory/chords.ts 中是模块级常量引用稳定，shallow 比较即可命中。
+ */
+const ChordDiagramSvg = memo(function ChordDiagramSvg({
   shape,
   size = 160,
   title,
@@ -300,4 +314,4 @@ export default function ChordDiagram({
       })}
     </svg>
   );
-}
+});

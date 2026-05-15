@@ -407,8 +407,22 @@ function ChordBrowser() {
       <div className="section-title">{activeCat}（{grouped[activeCat]?.length || 0}）</div>
       <div className="chord-grid">
         {(grouped[activeCat] || []).map(c => (
-          <div key={c.id} className="chord-card" onClick={() => setSelected(c)}>
-            <div className="chord-difficulty-dots" aria-label={`难度 ${c.difficulty}/5`}>
+          <div
+            key={c.id}
+            className="chord-card"
+            role="button"
+            tabIndex={0}
+            aria-label={`${c.name} 和弦，难度 ${c.difficulty} 星`}
+            aria-pressed={selected?.id === c.id}
+            onClick={() => setSelected(c)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelected(c);
+              }
+            }}
+          >
+            <div className="chord-difficulty-dots" aria-hidden="true">
               {Array.from({ length: 5 }, (_, i) => (
                 <span key={i} className={'dot ' + (i < c.difficulty ? 'on' : 'off')} />
               ))}

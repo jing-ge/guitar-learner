@@ -235,11 +235,12 @@ function HomePageInner() {
                   key={m.chordId}
                   type="button"
                   className="weak-chord-item"
+                  aria-label={`${chord.name} 和弦，错过 ${m.count} 次，点击去练习`}
                   onClick={() => handleWeakChord(m.chordId)}
                 >
                   <ChordDiagram shape={chord.shapes[0]} size={80} title={chord.name} colorMode="dark" />
                   <div className="wc-name">{chord.name}</div>
-                  <div className="wc-badge">×{m.count}</div>
+                  <div className="wc-badge" aria-hidden="true">×{m.count}</div>
                 </button>
               );
             })}
@@ -294,9 +295,11 @@ function HomePageInner() {
           <div>
             <strong>安装到主屏幕</strong>
             {deferredPrompt && <span> 支持一键安装，离线也能打开。</span>}
+            {isIOS && !deferredPrompt && (
+              <span> iOS Safari：点击底部 <span aria-hidden="true">⬆</span> 分享 → 添加到主屏幕</span>
+            )}
             {isAndroid && !deferredPrompt && <span> Android Chrome：菜单 → 添加到主屏幕</span>}
-            {isIOS && <span> iPhone Safari：分享 → 添加到主屏幕</span>}
-            {!isAndroid && !isIOS && !deferredPrompt && <span> 可安装为桌面应用。</span>}
+            {!isAndroid && !isIOS && !deferredPrompt && <span> 可安装为桌面应用（Chrome / Edge）。</span>}
           </div>
           {deferredPrompt && (
             <button className="btn btn-ghost" onClick={install}>立即安装</button>

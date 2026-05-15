@@ -8,7 +8,7 @@
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0f1419",
-  "theme_color": "#f59e0b",
+  "theme_color": "#0f1419",
   "lang": "zh-CN",
   "categories": ["education", "music"],
   "icons": [

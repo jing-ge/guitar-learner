@@ -64,6 +64,36 @@ button { font-family: inherit; }
   padding-bottom: calc(var(--tab-h) + var(--safe-bottom));
   background: radial-gradient(circle at top, rgba(34,211,238,0.08), transparent 24%), var(--bg);
 }
+
+/* ============ 可达性：focus-visible & skip-link ============ */
+:focus-visible {
+  outline: 2px solid var(--brand-strong);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--brand);
+  color: #1F1500;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+}
 .app-header {
   position: sticky; top: 0; z-index: 10;
   height: var(--header-h);
@@ -897,6 +927,58 @@ input, select, textarea { font-size: 16px; }
 @media (min-width: 900px) {
   .app-main { max-width: 980px; margin: 0 auto; width: 100%; padding: 18px 24px 24px; }
   .home-grid { grid-template-columns: repeat(3, 1fr); }
+  .fretboard-wrap .fretboard-svg { min-width: unset; width: 100%; height: auto; }
+}
+
+/* 更宽桌面：放大内容上限，保证留白合理 */
+@media (min-width: 1024px) {
+  .app-main {
+    max-width: 1100px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+/* 副页 Hero 两栏：标题/描述在左，rightSlot（分段控件等）在右 */
+@media (min-width: 980px) {
+  .subpage-hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 24px;
+    align-items: center;
+  }
+  .subpage-hero .sh-eyebrow,
+  .subpage-hero .sh-title,
+  .subpage-hero .sh-desc {
+    grid-column: 1;
+  }
+  .subpage-hero .sh-right {
+    position: static;
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: center;
+  }
+  /* segmented 控件作为 children 时也跟随宽屏：放在 hero 末尾，保持单列宽 */
+  .subpage-hero > .subpage-segmented {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 横屏窄屏（手机横置）：紧凑布局 */
+@media (orientation: landscape) and (max-height: 540px) and (min-width: 720px) {
+  .app-main { padding: 8px 16px 12px; }
+  .hero-card { padding: 14px 16px; }
+  .hero-card h1 { font-size: 22px; line-height: 26px; margin: 2px 0 4px; }
+  .hero-stats { margin: 10px 0; }
+  .stat-pill { min-height: 56px; padding: 6px 10px; }
+  .stat-pill strong { font-size: 24px; }
+  .hero-actions { margin-top: 10px; }
+  .home-layout { grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  .home-layout > .hero-card { grid-column: 1; }
+  .home-layout > .recommend-card,
+  .home-layout > .weak-chords-card { grid-column: 2; }
+  .home-layout > section:not(.hero-card):not(.recommend-card):not(.weak-chords-card) { grid-column: 1 / -1; }
+  .fretboard-wrap { max-width: 100%; }
   .fretboard-wrap .fretboard-svg { min-width: unset; width: 100%; height: auto; }
 }
 

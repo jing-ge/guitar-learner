@@ -36,6 +36,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">跳到主内容</a>
       <header className="app-header">
         <NavLink to="/home" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="brand">🎸 吉他学习</div>
@@ -48,7 +49,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="app-main">
+      <main className="app-main" id="main-content">
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/home" element={<HomePage />} />
