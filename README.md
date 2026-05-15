@@ -147,3 +147,54 @@ MIT License
 
 **已知遗留**：
 - 无。本轮异常数据用例（R01–R05）全部命中规范化路径，未触发 `HomeErrorBoundary` fallback；正常数据用例（R06–R08）统计与 CTA 切换均符合预期。Round 1 关单。
+
+### Round 2 — 2026-05-15
+**主题**：进度闭环 + 学习中心视觉对齐 / 麦克风权限统一组件
+
+**改动文件**：
+- 新增：`src/components/ProgressToast.tsx`、`src/components/MicPermissionState.tsx`
+- 修改：`src/utils/progress.ts`、`src/App.tsx`、`src/pages/HomePage.tsx`、`src/pages/LearnHub.tsx`、`src/pages/TunerPage.tsx`、`src/pages/ListenPage.tsx`、`src/pages/ChordsPage.tsx`、`src/pages/ScalesPage.tsx`、`src/pages/PentatonicPage.tsx`、`src/pages/FretboardPage.tsx`、`src/pages/CircleOfFifthsPage.tsx`、`src/styles/global.css`
+
+**产品要点**：
+- 5 个练习入口（调音 / 听歌识别×2 / 和弦检测 / 找音）都能记进 progress，首页今日推荐真正反映用户行为
+- LearnHub 增加 learn-subtitle 替代各子页冗余介绍卡，首屏内容密度提升
+- 麦克风权限失败统一为 MicPermissionState 组件（denied/error + UA 分支恢复指引）
+- ProgressToast 全局反馈"已记录"，1.8s 自动消失，带触觉反馈
+- 空态文案统一为"正在听… 弹一下吧"
+
+**开发要点**：
+- recordSessionThrottled 新函数：30s 内同 module 合并写入，避免反复触发
+- normalizeSession 兼容新增 t 字段，旧数据无影响
+- tunedToday 判定从模糊 `/tuner/i` 改为精确 `=== 'tuner'`
+- MicPermissionState 五态组件（idle/requesting/granted/denied/error）
+
+**测试结果**（12 用例，移动端 390x844 视口，dark/light 双主题，麦克风通过 monkey-patch 模拟 success/denied/error）
+
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R2-01 | LearnHub 5 个 tab 都有 `.learn-subtitle` 一行 | ✅ | 和弦"🎵 和弦 · 47 个 / 标准调弦"、音阶"🎼 音阶 · 9 种"、五声"🎯 五声 · 3 类 / 5 把位"、指板"🎸 指板"、五度圈"⭕ 五度圈 · 12 调"；毛玻璃背景 `rgba(24,32,51,.72)` + `backdrop-filter:blur(12px)` + 1px 半透白边框，切换有入场动效。 |
+| R2-02 | 学习子页无冗余介绍卡 | ✅ | 5/5 通过：ScalesPage、PentatonicPage、FretboardPage、CircleOfFifthsPage 在初次测试时已对齐；ChordsPage 由 hotfix 补删 `<div class="card"><h2>🎵 和弦学习</h2>...</div>` 块。 |
+| R2-03 | ChordsPage 颜色 token 化 | ✅ | `--text-muted = #8A94A7`（dark 主题）；ChordsPage.tsx grep `#475569` 0 命中；和弦详情页 DOM 内联样式扫描无 `#475569` 残留。 |
+| R2-04 | 浅色主题不崩 | ✅ | `data-theme="light"` 切换后 `/#/home /#/learn /#/practice` 三页面均正常渲染，body 背景 `rgb(246,248,251)`、文字 `rgb(31,41,55)`，无大块白底白字。 |
+| R2-05 | Toast 手动触发（`progress-recorded` CustomEvent）| ✅ | 触发后 0.3s 内出现 `.progress-toast.show`，绿色边框 `1px solid rgba(52,211,153,.32)`，文字"✓ 已记录 · 测试"，2.5s 后类名变 `.progress-toast`（去掉 show），`opacity:0` 自动消失。 |
+| R2-06 | Toast 不遮挡底部导航 | ✅ | Toast bottom=764, 底部 `.bottom-nav` top=780，16px 间距，无重叠。 |
+| R2-07 | listen-chord 记录 | ✅ | `localStorage.clear()` 后启动监听 12s 再停止，progress 出现 `{module:'listen-chord', score:0, total:0, seconds:21, t:1778829575339}`；带 `t` 字段；控制台无 error。（mock 110Hz 单音 score=0 属正常，无可识别和弦。）|
+| R2-08 | listen-key 记录 | ✅ | 切到"听曲定调"再监听 12s 停止，progress 追加 `{module:'listen-key', score:0, total:1, seconds:23, t:1778829640139}`。 |
+| R2-09 | chord-detect throttle 合并 | ✅ | 通过 `import('/src/utils/progress.ts')` 直接 3 次 rapid 调用 `recordSessionThrottled('chord-detect', ...)`：localStorage 中只有 **1 条** chord-detect session，`score:2, total:3, seconds:15`，证明 30s 内合并写入。（UI 路径下 mock 单音无法触发真实和弦判定，故走直接函数验证。）|
+| R2-10 | fretboard-find 记录 | ✅ | 进入找音模式点击 5 个指板格子后自动出现 `{module:'fretboard-find', score:1, total:5, seconds:15, t:...}`，Toast"✓ 已记录 · 找音 1/5"在底部短暂可见。 |
+| R2-11 | 首页"已调音 ✓"分支 | ✅ | 手动塞入 `{module:'tuner', total:1}` 后访问 `/#/home`，今日推荐区文案为"已调音 ✓，再来一次听歌识别或听音辨认。"，命中 tunedToday 精确匹配分支。 |
+| R2-12 | MicPermissionState denied → retry → granted | ✅ | `__mockMicDenied()` + 点击"开始调音" → 红色 `.mic-perm.denied` 卡片渲染：🚫 + "麦克风权限被拒绝" + "点击地址栏的 🔒 → 网站设置 → 麦克风 → 允许。" + "再试一次"按钮；切到 `__mockMicSuccess()` 再点重试 → `.mic-perm` 完全卸载，控制台无未捕获错误。 |
+
+**控制台 errors 汇总**：全 12 用例均无 error，只有两条 React Router v7 future flag warning（与 Round 1 一致，与本轮改动无关）。
+
+**已知遗留**：
+- 测试环境无法弹真实麦克风权限，R2-07/08/09/10 的进度记录通过 `getUserMedia` monkey-patch + 110Hz 合成音验证；其中 R2-09 throttle 因合成音无法触发真实和弦匹配，改用 `import('/src/utils/progress.ts')` 直接调函数证明 throttle 合并语义生效。
+- 截图目录：`/tmp/guitar-test/round2/`（22 张，含 5 个 tab 各 1 张、2 张 toast 时序、2 张明暗对照、麦克风 denied/retry 等）。
+
+**Hotfix（同轮内修复）**
+
+- 改动文件：`src/pages/ChordsPage.tsx`
+- 修复点：补删 ChordBrowser 子组件内残留的"🎵 和弦学习 / 点击和弦卡片查看指法图…" 介绍卡，使学习中心 5 个子页规范一致。
+- 验证：`npm run build` 通过；R2-02 由 ⚠️ 转为 ✅。
+
+**结论**：Round 2 通过率 **12/12 ✅**。MicPermissionState、ProgressToast、recordSessionThrottled、首页 tunedToday 分支、5 处进度记录入口、learn-subtitle 视觉对齐均工作正常。Round 2 关单，进入 Round 3。

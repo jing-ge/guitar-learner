@@ -4,6 +4,23 @@ import { CHORDS, type ChordDef, chordPlayablePositions, chordsByCategory } from 
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
 import { chordDetector, type ChordDetectResult } from '../audio/chord-detector';
+import { recordSessionThrottled } from '../utils/progress';
+import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
+
+/** 探测麦克风权限 */
+async function probeMic(): Promise<'granted' | 'denied' | 'error'> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    return 'granted';
+  } catch (err: any) {
+    const name = err?.name || '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+      return 'denied';
+    }
+    return 'error';
+  }
+}
 
 type PageMode = 'browse' | 'switch' | 'detect';
 
@@ -17,10 +34,6 @@ export default function ChordsPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2>🎵 和弦学习</h2>
-        <p>浏览和弦、练习转换、或让 app 识别你弹的和弦。</p>
-      </div>
       <div className="chip-row" style={{ marginBottom: 12 }}>
         <button className={'chip' + (pageMode === 'browse' ? ' active' : '')} onClick={() => setPageMode('browse')}>📖 和弦库</button>
         <button className={'chip' + (pageMode === 'switch' ? ' active' : '')} onClick={() => setPageMode('switch')}>🔄 转换练习</button>
@@ -219,11 +232,6 @@ function ChordBrowser() {
 
   return (
     <div>
-      <div className="card">
-        <h2>🎵 和弦学习</h2>
-        <p>点击和弦卡片查看指法图，可以试听<b>扫弦</b>或<b>分解</b>。</p>
-      </div>
-
       {/* 分类筛选 */}
       <div className="chip-row" style={{ marginBottom: 12 }}>
         {categories.map(c => (
@@ -237,7 +245,7 @@ function ChordBrowser() {
       {selected && (
         <div className="chord-detail">
           <ChordDiagram shape={selected.shapes[0]} size={220} title={selected.name} />
-          <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>
             {selected.fullName} · 难度 {'★'.repeat(selected.difficulty)}{'☆'.repeat(5 - selected.difficulty)}
           </div>
           {selected.tips && <div className="tips">💡 {selected.tips}</div>}
@@ -315,50 +323,114 @@ function ChordDetect() {
   const [targetChord, setTargetChord] = useState<ChordDef | null>(null);
   const [feedback, setFeedback] = useState<'right' | 'wrong' | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0 });
+  const [micState, setMicState] = useState<MicPermState>('idle');
+
+  // 会话级累计 & flush 状态
+  const startRef = useRef<number>(Date.now());
+  const sessionRightRef = useRef(0);
+  const sessionTotalRef = useRef(0);
+  const pendingFeedbackRef = useRef<'right' | 'wrong' | null>(null);
+
+  // 把 pendingFeedback 累加进 throttled 记录
+  const flushFeedback = useCallback(() => {
+    const pending = pendingFeedbackRef.current;
+    if (!pending) return;
+    const elapsed = Math.max(1, Math.round((Date.now() - startRef.current) / 1000));
+    recordSessionThrottled('chord-detect', pending === 'right' ? 1 : 0, 1, elapsed, 30);
+    sessionRightRef.current += pending === 'right' ? 1 : 0;
+    sessionTotalRef.current += 1;
+    pendingFeedbackRef.current = null;
+    startRef.current = Date.now();
+  }, []);
+
+  const fireToast = useCallback(() => {
+    if (sessionTotalRef.current <= 0) return;
+    window.dispatchEvent(new CustomEvent('progress-recorded', {
+      detail: { text: `已记录 · 和弦识别 ${sessionRightRef.current}/${sessionTotalRef.current}` }
+    }));
+  }, []);
 
   // 随机出题模式
   const newTarget = useCallback(() => {
+    // 进入新一题前 flush 上一题
+    flushFeedback();
     const easy = CHORDS.filter(c => c.difficulty <= 2);
     setTargetChord(easy[Math.floor(Math.random() * easy.length)]);
     setFeedback(null);
+  }, [flushFeedback]);
+
+  useEffect(() => {
+    // 首次出题（不需要 flush）
+    const easy = CHORDS.filter(c => c.difficulty <= 2);
+    setTargetChord(easy[Math.floor(Math.random() * easy.length)]);
+    setFeedback(null);
+    startRef.current = Date.now();
   }, []);
 
-  useEffect(() => { newTarget(); }, [newTarget]);
+  const startListening = useCallback(async () => {
+    setMicState('requesting');
+    const perm = await probeMic();
+    if (perm !== 'granted') {
+      setMicState(perm);
+      return;
+    }
+    setMicState('granted');
+    setFeedback(null);
+    startRef.current = Date.now();
+    await chordDetector.start((r) => {
+      setResult(r);
+      // 自动判定：如果有目标且匹配
+      if (r?.chord && targetChord && r.chord.id === targetChord.id && r.confidence >= 0.5) {
+        vibrate(15);
+        setFeedback('right');
+        pendingFeedbackRef.current = 'right';
+        setScore(s => ({ right: s.right + 1, total: s.total + 1 }));
+        chordDetector.stop();
+        setListening(false);
+      }
+    });
+    setListening(true);
+  }, [targetChord]);
+
+  const stopListening = useCallback(() => {
+    chordDetector.stop();
+    setListening(false);
+    flushFeedback();
+    fireToast();
+    // 重置会话累计，下次开麦重新计
+    sessionRightRef.current = 0;
+    sessionTotalRef.current = 0;
+  }, [flushFeedback, fireToast]);
 
   const toggle = useCallback(async () => {
     if (listening) {
-      chordDetector.stop();
-      setListening(false);
+      stopListening();
       return;
     }
-    setFeedback(null);
-    try {
-      await chordDetector.start((r) => {
-        setResult(r);
-        // 自动判定：如果有目标且匹配
-        if (r?.chord && targetChord && r.chord.id === targetChord.id && r.confidence >= 0.5) {
-          vibrate(15);
-          setFeedback('right');
-          setScore(s => ({ right: s.right + 1, total: s.total + 1 }));
-          chordDetector.stop();
-          setListening(false);
-        }
-      });
-      setListening(true);
-    } catch {}
-  }, [listening, targetChord]);
+    await startListening();
+  }, [listening, stopListening, startListening]);
 
-  useEffect(() => () => { chordDetector.stop(); }, []);
+  // 卸载 / 离开 detect 子模式时 flush + toast
+  useEffect(() => () => {
+    chordDetector.stop();
+    flushFeedback();
+    fireToast();
+    sessionRightRef.current = 0;
+    sessionTotalRef.current = 0;
+  }, [flushFeedback, fireToast]);
 
   const skipAndNext = () => {
     chordDetector.stop();
     setListening(false);
     setScore(s => ({ ...s, total: s.total + 1 }));
     setFeedback('wrong');
+    pendingFeedbackRef.current = 'wrong';
   };
 
   return (
     <>
+      <MicPermissionState state={micState} onRetry={startListening} />
+
       {/* 出题模式 */}
       {targetChord && (
         <div className="quiz-prompt">
@@ -381,7 +453,7 @@ function ChordDetect() {
         )}
         {listening && (
           <div className="btn-row" style={{ justifyContent: 'center' }}>
-            <button className="btn" onClick={() => { chordDetector.stop(); setListening(false); }}>■ 停止</button>
+            <button className="btn" onClick={stopListening}>■ 停止</button>
             <button className="btn btn-sm" onClick={skipAndNext}>跳过 →</button>
           </div>
         )}
@@ -405,7 +477,7 @@ function ChordDetect() {
               <div className="tuner-freq">检测到 {result.noteNames.join(' ')}</div>
             </>
           ) : (
-            <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-dim)' }}>正在听…请扫一次弦</div>
+            <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
           )}
         </div>
       )}

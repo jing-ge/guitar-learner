@@ -2,8 +2,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { chordDetector, type ChordDetectResult } from '../audio/chord-detector';
 import { SHARP_NAMES } from '../theory/notes';
 import { vibrate } from '../utils/haptic';
+import { recordSession } from '../utils/progress';
+import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 
 type Tab = 'chords' | 'key';
+
+/** 探测麦克风权限 */
+async function probeMic(): Promise<'granted' | 'denied' | 'error'> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    return 'granted';
+  } catch (err: any) {
+    const name = err?.name || '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+      return 'denied';
+    }
+    return 'error';
+  }
+}
 
 export default function ListenPage() {
   const [tab, setTab] = useState<Tab>('chords');
@@ -36,64 +53,92 @@ function LiveChordRecognizer() {
   const [listening, setListening] = useState(false);
   const [current, setCurrent] = useState<ChordDetectResult | null>(null);
   const [history, setHistory] = useState<ChordEntry[]>([]);
+  const [micState, setMicState] = useState<MicPermState>('idle');
   const startRef = useRef(0);
   const lastPushedChordRef = useRef('');
   const candidateChordRef = useRef('');
   const stableCountRef = useRef(0);
+  const historyRef = useRef<ChordEntry[]>([]);
 
-  const toggle = useCallback(async () => {
-    if (listening) {
-      chordDetector.stop();
-      setListening(false);
+  useEffect(() => { historyRef.current = history; }, [history]);
+
+  const start = useCallback(async () => {
+    setMicState('requesting');
+    const perm = await probeMic();
+    if (perm !== 'granted') {
+      setMicState(perm);
       return;
     }
+    setMicState('granted');
     setCurrent(null);
     setHistory([]);
+    historyRef.current = [];
     lastPushedChordRef.current = '';
     candidateChordRef.current = '';
     stableCountRef.current = 0;
     startRef.current = Date.now();
-    try {
-      await chordDetector.start((r) => {
-        setCurrent(r);
-        // 如果置信度较高，尝试进行稳定性判断
-        if (r?.chord && r.confidence >= 0.55) {
-          if (r.chord.name === candidateChordRef.current) {
-            stableCountRef.current++;
-          } else {
-            candidateChordRef.current = r.chord.name;
-            stableCountRef.current = 1;
-          }
-
-          // 只有当同一个和弦连续出现 6 次以上（约 100ms），才认为是稳定的，可以记录到历史中
-          if (stableCountRef.current >= 6 && candidateChordRef.current !== lastPushedChordRef.current) {
-            lastPushedChordRef.current = candidateChordRef.current;
-            vibrate(10);
-            setHistory(h => {
-              const next = [...h, {
-                name: candidateChordRef.current,
-                time: Math.round((Date.now() - startRef.current) / 1000),
-                confidence: r.confidence,
-              }];
-              // 限制历史记录数量，防止长时间运行导致内存和渲染压力过大
-              if (next.length > 50) return next.slice(next.length - 50);
-              return next;
-            });
-          }
+    await chordDetector.start((r) => {
+      setCurrent(r);
+      // 如果置信度较高，尝试进行稳定性判断
+      if (r?.chord && r.confidence >= 0.55) {
+        if (r.chord.name === candidateChordRef.current) {
+          stableCountRef.current++;
         } else {
-          // 置信度不够时，如果没检测到稳定和弦，重置计数器防止误判
-          candidateChordRef.current = '';
-          stableCountRef.current = 0;
+          candidateChordRef.current = r.chord.name;
+          stableCountRef.current = 1;
         }
-      });
-      setListening(true);
-    } catch {}
-  }, [listening]);
+
+        // 只有当同一个和弦连续出现 6 次以上（约 100ms），才认为是稳定的，可以记录到历史中
+        if (stableCountRef.current >= 6 && candidateChordRef.current !== lastPushedChordRef.current) {
+          lastPushedChordRef.current = candidateChordRef.current;
+          vibrate(10);
+          setHistory(h => {
+            const next = [...h, {
+              name: candidateChordRef.current,
+              time: Math.round((Date.now() - startRef.current) / 1000),
+              confidence: r.confidence,
+            }];
+            // 限制历史记录数量，防止长时间运行导致内存和渲染压力过大
+            if (next.length > 50) return next.slice(next.length - 50);
+            return next;
+          });
+        }
+      } else {
+        // 置信度不够时，如果没检测到稳定和弦，重置计数器防止误判
+        candidateChordRef.current = '';
+        stableCountRef.current = 0;
+      }
+    });
+    setListening(true);
+  }, []);
+
+  const stop = useCallback(() => {
+    chordDetector.stop();
+    setListening(false);
+    if (startRef.current > 0) {
+      const elapsedSec = Math.round((Date.now() - startRef.current) / 1000);
+      const items = historyRef.current;
+      if (elapsedSec >= 10) {
+        recordSession('listen-chord', items.length, items.length, elapsedSec);
+        window.dispatchEvent(new CustomEvent('progress-recorded', {
+          detail: { text: `已记录 · 识别 ${items.length} 个和弦` }
+        }));
+      }
+    }
+    startRef.current = 0;
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (listening) stop();
+    else start();
+  }, [listening, start, stop]);
 
   useEffect(() => () => { chordDetector.stop(); }, []);
 
   return (
     <>
+      <MicPermissionState state={micState} onRetry={start} />
+
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
         <button className={'btn ' + (listening ? '' : 'btn-primary')} style={{ width: 200 }} onClick={toggle}>
           {listening ? '■ 停止监听' : '🎤 开始监听'}
@@ -109,7 +154,7 @@ function LiveChordRecognizer() {
             <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>检测到 {current.noteNames.join(' ')}</div>
           </>
         ) : listening ? (
-          <div className="tuner-note" style={{ fontSize: 18, color: 'var(--text-dim)' }}>正在听…播放音乐或弹奏</div>
+          <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
         ) : (
           <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-dim)' }}>点击「开始监听」</div>
         )}
@@ -157,35 +202,58 @@ function KeyDetector() {
   const [listening, setListening] = useState(false);
   const [pcCounts, setPcCounts] = useState<number[]>(new Array(12).fill(0));
   const [elapsed, setElapsed] = useState(0);
+  const [micState, setMicState] = useState<MicPermState>('idle');
   const timerRef = useRef<number | null>(null);
   const startRef = useRef(0);
+  const bestKeyRef = useRef<{ root: number; mode: 'major' | 'minor'; score: number; name: string } | null>(null);
 
-  const toggle = useCallback(async () => {
-    if (listening) {
-      chordDetector.stop();
-      if (timerRef.current) clearInterval(timerRef.current);
-      setListening(false);
+  const start = useCallback(async () => {
+    setMicState('requesting');
+    const perm = await probeMic();
+    if (perm !== 'granted') {
+      setMicState(perm);
       return;
     }
+    setMicState('granted');
     setPcCounts(new Array(12).fill(0));
     setElapsed(0);
     startRef.current = Date.now();
     timerRef.current = window.setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
     }, 1000);
-    try {
-      await chordDetector.start((r) => {
-        if (r && r.detectedPcs.length > 0) {
-          setPcCounts(prev => {
-            const next = [...prev];
-            for (const pc of r.detectedPcs) next[pc]++;
-            return next;
-          });
-        }
-      });
-      setListening(true);
-    } catch {}
-  }, [listening]);
+    await chordDetector.start((r) => {
+      if (r && r.detectedPcs.length > 0) {
+        setPcCounts(prev => {
+          const next = [...prev];
+          for (const pc of r.detectedPcs) next[pc]++;
+          return next;
+        });
+      }
+    });
+    setListening(true);
+  }, []);
+
+  const stop = useCallback(() => {
+    chordDetector.stop();
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setListening(false);
+    if (startRef.current > 0) {
+      const elapsedSec = Math.round((Date.now() - startRef.current) / 1000);
+      if (elapsedSec >= 10) {
+        const hasBest = !!bestKeyRef.current;
+        recordSession('listen-key', hasBest ? 1 : 0, 1, elapsedSec);
+        window.dispatchEvent(new CustomEvent('progress-recorded', {
+          detail: { text: '已记录 · 调性分析' }
+        }));
+      }
+    }
+    startRef.current = 0;
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (listening) stop();
+    else start();
+  }, [listening, start, stop]);
 
   useEffect(() => () => { chordDetector.stop(); if (timerRef.current) clearInterval(timerRef.current); }, []);
 
@@ -215,8 +283,13 @@ function KeyDetector() {
   const bestKey = totalCounts > 20 ? keyScores[0] : null;
   const top3 = keyScores.slice(0, 3);
 
+  // 同步给 stop 回调
+  useEffect(() => { bestKeyRef.current = bestKey; }, [bestKey]);
+
   return (
     <>
+      <MicPermissionState state={micState} onRetry={start} />
+
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
         <button className={'btn ' + (listening ? '' : 'btn-primary')} style={{ width: 200 }} onClick={toggle}>
           {listening ? '■ 停止分析' : '🎤 开始听曲定调'}
@@ -232,7 +305,9 @@ function KeyDetector() {
             <div className="tuner-freq">最可能的调性</div>
           </>
         ) : totalCounts > 0 ? (
-          <div className="tuner-note" style={{ fontSize: 18, color: 'var(--text-dim)' }}>采集中…再听一会儿</div>
+          <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
+        ) : listening ? (
+          <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
         ) : (
           <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-dim)' }}>播放音乐开始分析</div>
         )}

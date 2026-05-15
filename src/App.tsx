@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import LearnHub from './pages/LearnHub';
 import PracticeHub from './pages/PracticeHub';
 import PlayHub from './pages/PlayHub';
+import ProgressToast from './components/ProgressToast';
 
 // 底部 4 大主区导航
 const TABS = [
@@ -57,6 +58,8 @@ export default function App() {
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </main>
+
+      <ProgressToast />
 
       <nav className="bottom-nav">
         {TABS.map(t => (

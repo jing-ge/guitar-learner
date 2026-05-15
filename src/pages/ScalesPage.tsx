@@ -67,11 +67,6 @@ export default function ScalesPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2>🎼 音阶学习</h2>
-        <p>选择调性和音阶类型，学习、听音测试、或用你的吉他弹奏练习。</p>
-      </div>
-
       {/* 模式切换 */}
       <div className="chip-row" style={{ marginBottom: 10 }}>
         <button className={'chip' + (pageMode === 'learn' ? ' active' : '')} onClick={() => setPageMode('learn')}>📖 学习</button>

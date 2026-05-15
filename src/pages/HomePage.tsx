@@ -79,7 +79,7 @@ function getRecommendation(summary: ReturnType<typeof getPracticeSummary>, today
     return '今天还没调音，先把琴调准，再进入综合训练。';
   }
   if (today.totalSeconds < 600) {
-    return `今天已练 ${Math.floor(today.totalSeconds / 60)} 分钟，再做一次听音测试进入状态。`;
+    return '已调音 ✓，再来一次听歌识别或听音辨认。';
   }
   if (today.totalQuestions > 0) {
     return `今天已答对 ${today.totalRight} 题，继续做五度圈速答巩固记忆。`;

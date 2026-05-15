@@ -249,11 +249,6 @@ export default function CircleOfFifthsPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2>⭕ 五度圈</h2>
-        <p>五度圈是理解调性关系的<b>终极工具</b>。相邻调性只差一个升/降号，和弦走向遵循五度圈规律。</p>
-      </div>
-
       <div className="chip-row" style={{ marginBottom: 12 }}>
         <button className={'chip' + (mode === 'learn' ? ' active' : '')} onClick={() => setMode('learn')}>
           📖 学习

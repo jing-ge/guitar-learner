@@ -175,11 +175,6 @@ export default function PentatonicPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2>🎯 五声音阶</h2>
-        <p>五声音阶是最实用的 solo 工具：只有 5 个音，怎么弹都好听。先掌握 Box 1，再扩展到其它 4 个把位。</p>
-      </div>
-
       {/* 选择音阶类型 */}
       <div className="section-title">音阶类型</div>
       <div className="chip-row" style={{ marginBottom: 10 }}>

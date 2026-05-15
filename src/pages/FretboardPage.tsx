@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Fretboard, { type LabelMode } from '../components/Fretboard';
 import { ALL_ROOTS, fretToMidi, pcToName } from '../theory/notes';
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
+import { recordSession } from '../utils/progress';
 
 type Mode = 'explore' | 'find';
 
@@ -16,6 +17,48 @@ export default function FretboardPage() {
   const [target, setTarget] = useState<number>(() => Math.floor(Math.random() * 12));
   const [answered, setAnswered] = useState<{ correct: boolean; note: string } | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0 });
+
+  // 找音模式的进度记录
+  const findStartRef = useRef<number>(0);
+  const lastFlushedRef = useRef<{ right: number; total: number }>({ right: 0, total: 0 });
+  const scoreRef = useRef(score);
+  useEffect(() => { scoreRef.current = score; }, [score]);
+
+  const flushFind = (silent = false) => {
+    const s = scoreRef.current;
+    const pendingRight = s.right - lastFlushedRef.current.right;
+    const pendingTotal = s.total - lastFlushedRef.current.total;
+    if (pendingTotal <= 0) return;
+    const elapsedSec = findStartRef.current > 0
+      ? Math.max(1, Math.round((Date.now() - findStartRef.current) / 1000))
+      : 1;
+    recordSession('fretboard-find', pendingRight, pendingTotal, elapsedSec);
+    lastFlushedRef.current = { right: s.right, total: s.total };
+    findStartRef.current = Date.now();
+    if (!silent) {
+      window.dispatchEvent(new CustomEvent('progress-recorded', {
+        detail: { text: `已记录 · 找音 ${s.right}/${s.total}` }
+      }));
+    }
+  };
+
+  // 进入 find 模式时初始化；离开 find 模式或卸载时 flush
+  useEffect(() => {
+    if (mode === 'find') {
+      findStartRef.current = Date.now();
+      lastFlushedRef.current = { right: 0, total: 0 };
+      return () => { flushFind(false); };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // 每答 5 题自动 flush
+  useEffect(() => {
+    if (mode !== 'find') return;
+    const sinceFlushed = score.total - lastFlushedRef.current.total;
+    if (sinceFlushed >= 5) flushFind(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [score.total, mode]);
 
   // 探索模式下：展示全部 12 个音 / 仅自然音
   const exploreHighlight = useMemo(() => {
@@ -48,11 +91,6 @@ export default function FretboardPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2>🎸 指板学习</h2>
-        <p>了解六根弦上每个品位的音名，是即兴与作曲的基础。</p>
-      </div>
-
       {/* 模式切换 */}
       <div className="chip-row" style={{ marginBottom: 10 }}>
         <button className={'chip' + (mode === 'explore' ? ' active' : '')} onClick={() => setMode('explore')}>

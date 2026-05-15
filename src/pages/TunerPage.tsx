@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { pitchDetector, type PitchResult } from '../audio/pitch-detector';
 import { midiToFreq } from '../theory/notes';
 import { synth } from '../audio/synth';
+import { recordSession } from '../utils/progress';
+import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 
 // 标准调弦 6 弦信息
 const STRINGS = [
@@ -13,11 +15,33 @@ const STRINGS = [
   { name: 'E4', label: '1弦 E', midi: 64, freq: 329.63 },
 ];
 
+/** 探测麦克风权限：返回 'granted' / 'denied' / 'error' */
+async function probeMic(): Promise<'granted' | 'denied' | 'error'> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    return 'granted';
+  } catch (err: any) {
+    const name = err?.name || '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+      return 'denied';
+    }
+    return 'error';
+  }
+}
+
 export default function TunerPage() {
   const [active, setActive] = useState(false);
   const [pitch, setPitch] = useState<PitchResult | null>(null);
-  const [error, setError] = useState('');
+  const [micState, setMicState] = useState<MicPermState>('idle');
   const [selectedString, setSelectedString] = useState(-1); // -1 = 自动检测
+
+  // 进度记录相关
+  const recordedRef = useRef(false);
+  const sessionStartRef = useRef<number>(0);
+  const inTuneStableRef = useRef(0);
+  // 用 ref 保存最新的 active 状态，便于 cleanup 时读取
+  const activeRef = useRef(false);
 
   // 最近的目标弦
   const targetString = selectedString >= 0
@@ -34,25 +58,84 @@ export default function TunerPage() {
   const inTune = pitch && Math.abs(centsFromTarget) <= 5;
   const closeEnough = pitch && Math.abs(centsFromTarget) <= 15;
 
-  const toggleTuner = useCallback(async () => {
-    if (active) {
-      pitchDetector.stop();
-      setActive(false);
-      setPitch(null);
+  const startListen = useCallback(async () => {
+    setMicState('requesting');
+    const perm = await probeMic();
+    if (perm !== 'granted') {
+      setMicState(perm);
       return;
     }
-    setError('');
-    try {
-      await pitchDetector.start((result) => setPitch(result));
-      setActive(true);
-    } catch {
-      setError('无法访问麦克风，请在浏览器设置中允许麦克风权限。');
+    setMicState('granted');
+    sessionStartRef.current = Date.now();
+    recordedRef.current = false;
+    inTuneStableRef.current = 0;
+
+    await pitchDetector.start((result) => {
+      setPitch(result);
+      // 实时判定：连续 ~3 帧 ±5 cent
+      if (result && targetStringRef.current) {
+        const cents = Math.round(
+          1200 * Math.log2(result.freq / midiToFreq(targetStringRef.current.midi))
+        );
+        if (Math.abs(cents) <= 5) {
+          inTuneStableRef.current++;
+        } else {
+          inTuneStableRef.current = 0;
+        }
+        if (inTuneStableRef.current >= 3 && !recordedRef.current) {
+          recordedRef.current = true;
+          const sec = Math.max(1, Math.round((Date.now() - sessionStartRef.current) / 1000));
+          recordSession('tuner', 1, 1, sec);
+          window.dispatchEvent(new CustomEvent('progress-recorded', {
+            detail: { text: `已记录 · 调音 +${sec}s` }
+          }));
+        }
+      } else {
+        inTuneStableRef.current = 0;
+      }
+    });
+    setActive(true);
+    activeRef.current = true;
+  }, []);
+
+  // targetString 通过 ref 给回调读
+  const targetStringRef = useRef(targetString);
+  useEffect(() => { targetStringRef.current = targetString; }, [targetString]);
+
+  const stopListen = useCallback(() => {
+    pitchDetector.stop();
+    setActive(false);
+    activeRef.current = false;
+    setPitch(null);
+    // 若没记过 tuner 但持续 ≥5s，记 tuner-warmup
+    if (!recordedRef.current && sessionStartRef.current > 0) {
+      const sec = Math.round((Date.now() - sessionStartRef.current) / 1000);
+      if (sec >= 5) {
+        recordSession('tuner-warmup', 0, 0, sec);
+      }
     }
-  }, [active]);
+    sessionStartRef.current = 0;
+  }, []);
+
+  const toggleTuner = useCallback(async () => {
+    if (active) {
+      stopListen();
+      return;
+    }
+    await startListen();
+  }, [active, startListen, stopListen]);
 
   // 页面卸载时停止
   useEffect(() => {
-    return () => { pitchDetector.stop(); };
+    return () => {
+      if (activeRef.current) {
+        pitchDetector.stop();
+        if (!recordedRef.current && sessionStartRef.current > 0) {
+          const sec = Math.round((Date.now() - sessionStartRef.current) / 1000);
+          if (sec >= 5) recordSession('tuner-warmup', 0, 0, sec);
+        }
+      }
+    };
   }, []);
 
   const playReference = async (s: typeof STRINGS[number]) => {
@@ -70,12 +153,13 @@ export default function TunerPage() {
         <p>使用手机麦克风实时检测弦音，帮你把吉他调准。调准后再进行听音/弹琴练习。</p>
       </div>
 
+      <MicPermissionState state={micState} onRetry={startListen} />
+
       {/* 启动按钮 */}
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
         <button className={'btn ' + (active ? '' : 'btn-primary')} style={{ width: 200 }} onClick={toggleTuner}>
           {active ? '■ 停止调音' : '🎤 开始调音'}
         </button>
-        {error && <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</div>}
       </div>
 
       {/* 偏差仪表盘 */}
@@ -127,7 +211,7 @@ export default function TunerPage() {
             </div>
           </>
         ) : active ? (
-          <div className="tuner-note" style={{ color: 'var(--text-dim)', fontSize: 18 }}>正在听…请弹一根弦</div>
+          <div className="tuner-note" style={{ color: 'var(--text-muted)', fontSize: 16, lineHeight: '24px', textAlign: 'center' }}>正在听… 弹一下吧</div>
         ) : (
           <div className="tuner-note" style={{ color: 'var(--text-dim)', fontSize: 16 }}>点击"开始调音"启用麦克风</div>
         )}

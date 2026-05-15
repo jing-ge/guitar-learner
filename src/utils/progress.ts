@@ -3,17 +3,18 @@
 export interface DailyRecord {
   date: string;       // YYYY-MM-DD
   totalSeconds: number;
-  sessions: { module: string; score: number; total: number; seconds: number }[];
+  sessions: { module: string; score: number; total: number; seconds: number; t?: number }[];
 }
 
 const KEY = 'guitar-learner-progress';
 
-function normalizeSession(s: any): { module: string; score: number; total: number; seconds: number } {
+function normalizeSession(s: any): { module: string; score: number; total: number; seconds: number; t: number } {
   return {
     module: typeof s?.module === 'string' ? s.module : '',
     score: Number(s?.score) || 0,
     total: Number(s?.total) || 0,
     seconds: Number(s?.seconds) || 0,
+    t: Number(s?.t) || 0,
   };
 }
 
@@ -74,8 +75,46 @@ export function recordSession(module: string, score: number, total: number, seco
   if (!rec) { rec = { date: d, totalSeconds: 0, sessions: [] }; all.push(rec); }
   if (!Array.isArray(rec.sessions)) rec.sessions = [];
   if (typeof rec.totalSeconds !== 'number') rec.totalSeconds = 0;
-  rec.sessions.push({ module, score, total, seconds });
+  rec.sessions.push({ module, score, total, seconds, t: Date.now() });
   rec.totalSeconds += seconds;
+  saveAll(all);
+}
+
+/**
+ * 限频记录：若今日同 module 最后一条 session 在 throttleSec 秒内，合并累加；
+ * 否则 push 新 session。
+ */
+export function recordSessionThrottled(
+  module: string,
+  score: number,
+  total: number,
+  seconds: number,
+  throttleSec = 30
+): void {
+  const all = loadAll();
+  const d = today();
+  let rec = all.find(r => r.date === d);
+  if (!rec) { rec = { date: d, totalSeconds: 0, sessions: [] }; all.push(rec); }
+  if (!Array.isArray(rec.sessions)) rec.sessions = [];
+  if (typeof rec.totalSeconds !== 'number') rec.totalSeconds = 0;
+
+  const now = Date.now();
+  // 找最后一条 module 匹配的 session
+  let lastIdx = -1;
+  for (let i = rec.sessions.length - 1; i >= 0; i--) {
+    if (rec.sessions[i].module === module) { lastIdx = i; break; }
+  }
+  const last = lastIdx >= 0 ? rec.sessions[lastIdx] : null;
+  if (last && typeof last.t === 'number' && last.t > 0 && (now - last.t) < throttleSec * 1000) {
+    last.score = (Number(last.score) || 0) + score;
+    last.total = (Number(last.total) || 0) + total;
+    last.seconds = (Number(last.seconds) || 0) + seconds;
+    last.t = now;
+    rec.totalSeconds += seconds;
+  } else {
+    rec.sessions.push({ module, score, total, seconds, t: now });
+    rec.totalSeconds += seconds;
+  }
   saveAll(all);
 }
 
@@ -125,7 +164,7 @@ export function getPracticeSummary(): ProgressSummary {
     return sum + sessions.reduce((acc, session) => acc + session.total, 0);
   }, 0);
   const todaySessions = Array.isArray(todayRecord?.sessions) ? todayRecord.sessions : [];
-  const tunedToday = todaySessions.some(session => /tuner/i.test(session.module));
+  const tunedToday = todaySessions.some(session => session.module === 'tuner');
 
   return {
     hasAnyRecord: all.some(record => {
