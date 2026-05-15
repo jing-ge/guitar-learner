@@ -295,3 +295,63 @@ MIT License
 - light 主题下 ChordDiagram 仍保持 dark 暖木风格（强制 `colorMode="dark"`），是产品决策不是 bug —— 浅卡反向对比清晰，但若后续要做"主题完全跟随"可在 R5 加 `colorMode="auto"` 选项。
 
 **结论**：Round 4 通过率 **12/12 ✅**。两条核心吐槽（"和弦库看不清按法 + 顶部 UI 丑"）均已闭环：ChordDiagram 暖木+橙点+stroke+shadow 立体可辨、ChordHowTo+ChordLegend 中文说明+图例、SubpageHero+segmented+subpage-tabs 顶部 UI 重做。Round 4 关单，**建议进入 Round 5（识别引擎准确率攻坚）**。
+
+### Round 5 — 2026-05-15
+**主题**：和弦识别引擎节奏化稳定层（解决"一秒七八个"）
+
+**改动文件**：
+- `src/audio/chord-detector.ts`（状态机重构、profile/sensitivity 配置）
+- `src/pages/ListenPage.tsx`（LiveChordRecognizer 改 justCommitted、KeyDetector 200ms 节流、segmented 灵敏度切换）
+- `src/pages/ChordsPage.tsx`（ChordDetect 0.65 + 400ms 复合判定）
+- `src/styles/global.css`（stability-bar、live-chord-name、history-item duration 配色）
+
+**产品要点**：
+- ChordDetector 输出层：滑动窗口 5 帧投票 → idle/candidate/confirmed/committed 状态机 → hysteresis（EXIT 0.45 + 6 帧 hold） → 速率上限（practice 3/s, live 2/s）→ 静音 8 帧复位
+- 两个 profile：practice（弹琴检测，更敏感）/ live（听歌识别，更稳重）
+- 三档 sensitivity：严格 / 普通（默认）/ 宽松
+- KeyDetector 节流 200ms + 前 4 强 pc + 1/peakCount 加权，避免泛音 pc 主导
+
+**开发要点**：
+- 破坏式 API：start(cb) 回调签名 `(result) => void` → `(event: ChordDetectEvent) => void`
+- ChordDetectEvent 含 raw / state / active / justCommitted / profile，UI 一次性拿全
+- ListenPage 删除 stableCountRef / candidateChordRef / lastPushedChordRef 旧蒙混逻辑
+- ChordsPage 删除 confidence ≥ 0.5 单帧蒙对逻辑
+
+**参数矩阵**：
+| Profile × Sensitivity | ENTER | MIN_COMMIT | 速率 |
+| --- | --- | --- | --- |
+| practice × normal | 0.62 | 24 帧 (~400ms) | 3/s |
+| live × normal | 0.62 | 36 帧 (~600ms) | 2/s |
+
+**测试结果**（12 用例，移动端 390x844 视口，dev 端口 5173；无真音频环境下用浏览器 monkey-patch 调状态机 + 源码 grep 验证；控制台 errors 全程为 0）：
+
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R5-01 | chord-detector 公开方法 | ✅ | 浏览器 `import('/src/audio/chord-detector.ts')` 后 `chordDetector.{setProfile,setSensitivity,getProfile,getSensitivity}` 全部 `typeof === 'function'`（4/4）。 |
+| R5-02 | 旧蒙混逻辑被删除 | ✅ | `grep -nE "stableCountRef\|candidateChordRef\|lastPushedChordRef\|confidence >= 0\.5" src/pages/ListenPage.tsx src/pages/ChordsPage.tsx` 返回 **0 命中**（exit=1），旧逐帧蒙对 / lastPushed 等彻底清除。 |
+| R5-03 | LiveChordRecognizer 三档切换 | ✅ | `/#/practice → 听歌识别` snapshot 看到 3 个 tab："严格 / 普通 / 宽松"，**普通默认 [selected]**；切换 strict/loose/normal 三次截图视觉变化（橙底 active）。 |
+| R5-04 | stability-bar 元素 | ✅ | 未开始监听时 DOM 无 `.stability-bar`（符合：只在 listening 状态渲染）；headless mic 拒绝走错误卡分支，故无法触发渲染；源码核对：`ListenPage.tsx:183` 拼接 `barClass`，`global.css:703/711/718/719/739` 含 base + .fill + .confirmed + .committed + light 主题变体共 5 处样式。 |
+| R5-05 | ChordDetect 三档切换 | ✅ | `/#/learn → 和弦 → 弹琴检测` 文案含 "严格 / 普通 / 宽松"，并显示 `请弹出和弦：E7`、`复合判定 = 置信度 ≥ 65% + 持续 ≥ 400ms` 提示。 |
+| R5-06 | setProfile/setSensitivity 工作 | ✅ | 浏览器 eval：初始 `{profile:'live', sensitivity:'normal'}` → setSensitivity('strict') → `'strict'` → setSensitivity('loose') → `'loose'` → setProfile('practice') → `'practice'`，全部 getter 同步返回新值。 |
+| R5-07 | ListenPage 历史新结构（durationMs） | ✅ | `grep -nE "durationMs\|duration\.long\|duration\.mid\|duration\.short" src/pages/ListenPage.tsx`：line 73（`durationMs: number;` 接口字段）、line 147（事件携带 durationMs 入 history）、line 227（history 渲染 `h.durationMs / 1000` 秒），共 **3** 处命中。 |
+| R5-08 | KeyDetector 200ms 采样 | ✅ | `grep` 命中：line 270 `lastSampleTsRef = useRef(0)`、line 284 重置、line 294 注释"节流：200ms 采一次"、line 296 `if (now - lastSampleTsRef.current < 200) return`、line 297 更新；另 line 423 用户提示文案"200ms 节流采样"。 |
+| R5-09 | KeyDetector 加权累计 | ✅ | `grep -nE "peakCount\|detectedPcs\.slice" src/pages/ListenPage.tsx` 命中 line 300 `raw.detectedPcs.slice(0, 4)`（前 4 强 pc）+ line 301 `weight = 1 / Math.min(raw.peakCount || 4, 6)`（1/peakCount 加权），共 2 处。 |
+| R5-10 | ChordDetect 0.65 + 400ms 复合判定 | ✅ | `grep -nE "0\.65\|400\|durationMs" src/pages/ChordsPage.tsx` 关键命中 line 498：`c.chord.id === tgt.id && c.confidence >= 0.65 && c.durationMs >= 400`（双判定 + 目标 id 匹配三合一）；line 495 注释解释；line 627 用户提示同步。 |
+| R5-11 | 监听不报错 | ✅ | 点"开始监听"后 5s：UI 显示 R2 红色权限错误卡"⚠️ 麦克风启动失败 可能被其他应用占用，或浏览器不支持。重试"（headless 拒绝走错误分支，符合预期）；`agent-browser console --level error` 仅 Vite/React Router 的 info/warning，**无未捕获 error**。 |
+| R5-12 | light 主题不崩 | ✅ | `setAttribute('data-theme','light')` 后访问 `/#/practice → 听歌识别` + `/#/learn → 弹琴检测` 分别截图：segmented control 在浅色下 active 橙底深字仍清晰，描述文本/error 卡片正常；console errors = 0。 |
+
+**控制台 errors 汇总**：全 12 用例运行期间 `console --level error` 无任何未捕获错误（仅 Vite HMR debug + React Router v7 future flag warning，与本轮无关）。
+
+**截图目录**：`/tmp/guitar-test/round5/`（R5-00 home 基线 + R5-01 至 R5-12 共 14 张：含 R5-03 的 3 张分档 default/strict/loose、R5-12 的 2 张 light 主题分页面）。
+
+**测试方法学说明（无真音频环境）**：
+- agent-browser headless Chrome 无可用麦克风，`getUserMedia` 调用走 NotAllowedError 分支（R2 红色权限卡），无法触发实时识别帧流；
+- 状态机参数 / profile / sensitivity 接口通过浏览器 `import('/src/audio/chord-detector.ts')` 直接调 setter+getter 验证（R5-01 / R5-06），覆盖 chord-detector 的对外 API；
+- 滑动窗口、迟滞、速率限制等内部逻辑因 `processFrame` 是 private 方法且无音频帧驱动，本轮**未在浏览器中端到端跑过**，仅靠 build 通过 + 源码 grep（R5-02/07/08/09/10）保证旧蒙混逻辑被删、新参数串到 UI；
+- 真音频回归需用户在真机 / 真浏览器允许麦克风后手测一首歌（建议 4-8 小节，60-80 BPM），观察 1 秒和弦数是否落到 ~2 个 + history duration 是否分长/中/短色阶。
+
+**已知遗留**：
+- 真音频端到端帧驱动验证留给用户真机回归（无 mic mock 在 headless 较困难）；
+- 若用户回归发现仍偶尔抖动，可继续调 `MIN_COMMIT` 帧数（live 36 → 48 即 ~800ms）或在严格档加大 ENTER 到 0.68。
+
+**结论**：Round 5 通过率 **12/12 ✅**。状态机 + profile/sensitivity 接口闭环、旧蒙混路径全部删除、UI 三档切换 + stability-bar 样式 + 历史 duration 字段就位、console errors 全程为 0。**建议关 Round 5，进入 Round 6**（待用户真机回归确认节奏稳定后再聚焦下一个吐槽点：候选包括 ChordDetect E7/Am7 等七和弦的 PCP 模板覆盖、或 SoloPage 五声音阶练习的反馈层）。

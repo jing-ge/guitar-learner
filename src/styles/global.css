@@ -699,6 +699,45 @@ button { font-family: inherit; }
 .quiz-feedback.right { color: var(--green); }
 .quiz-feedback.wrong { color: var(--danger); }
 
+/* ============ 稳定度进度条（chord detector R5） ============ */
+.stability-bar {
+  display: inline-block;
+  width: 100px; height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.stability-bar .fill {
+  display: block;
+  height: 100%;
+  background: var(--text-muted);
+  border-radius: 999px;
+  transition: width 80ms linear, background 200ms var(--ease-out);
+}
+.stability-bar.confirmed .fill { background: var(--accent-cyan); }
+.stability-bar.committed .fill { background: var(--success); }
+
+.live-chord-name {
+  font-size: 32px; line-height: 36px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  transition: color 200ms var(--ease-out);
+}
+.live-chord-name.candidate { color: var(--text-muted); }
+.live-chord-name.confirmed { color: var(--text-strong); }
+.live-chord-name.committed { color: var(--brand-strong); }
+
+.history-item .duration {
+  font-size: 11px; line-height: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.history-item .duration.long  { color: var(--success); }
+.history-item .duration.mid   { color: var(--brand); }
+.history-item .duration.short { color: var(--text-muted); }
+
+[data-theme="light"] .stability-bar { background: rgba(0,0,0,0.06); }
+
 /* ============ 调音器 ============ */
 .tuner-gauge { margin-bottom: 8px; }
 .tuner-result {

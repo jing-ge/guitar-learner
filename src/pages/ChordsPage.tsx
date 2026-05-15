@@ -6,7 +6,7 @@ import SubpageHero from '../components/SubpageHero';
 import { CHORDS, type ChordDef, chordPlayablePositions, chordsByCategory } from '../theory/chords';
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
-import { chordDetector, type ChordDetectResult } from '../audio/chord-detector';
+import { chordDetector, type ChordDetectEvent, type DetectorSensitivity, type DetectorState } from '../audio/chord-detector';
 import { recordSessionThrottled } from '../utils/progress';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 
@@ -366,21 +366,53 @@ function ChordBrowser() {
 }
 
 /* ====== 弹琴检测 ====== */
+
+const SENSITIVITY_LABEL: Record<DetectorSensitivity, string> = { strict: '严格', normal: '普通', loose: '宽松' };
+
+function SensitivityControl({ value, onChange }: { value: DetectorSensitivity; onChange: (s: DetectorSensitivity) => void }) {
+  const options: DetectorSensitivity[] = ['strict', 'normal', 'loose'];
+  return (
+    <div className="subpage-segmented" role="tablist" style={{ marginBottom: 10 }}>
+      {options.map(o => (
+        <button
+          key={o}
+          role="tab"
+          aria-selected={value === o}
+          className={value === o ? 'active' : ''}
+          onClick={() => onChange(o)}
+        >
+          {SENSITIVITY_LABEL[o]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ChordDetect() {
   const [listening, setListening] = useState(false);
-  const [result, setResult] = useState<ChordDetectResult | null>(null);
+  const [activeChord, setActiveChord] = useState<ChordDef | null>(null);
+  const [activeHeldMs, setActiveHeldMs] = useState(0);
+  const [activeConf, setActiveConf] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [detState, setDetState] = useState<DetectorState>('idle');
+  const [committedFlash, setCommittedFlash] = useState(false);
   const [targetChord, setTargetChord] = useState<ChordDef | null>(null);
   const [feedback, setFeedback] = useState<'right' | 'wrong' | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0 });
   const [micState, setMicState] = useState<MicPermState>('idle');
+  const [sensitivity, setSensitivity] = useState<DetectorSensitivity>('normal');
 
   // 会话级累计 & flush 状态
   const startRef = useRef<number>(Date.now());
   const sessionRightRef = useRef(0);
   const sessionTotalRef = useRef(0);
   const pendingFeedbackRef = useRef<'right' | 'wrong' | null>(null);
+  const targetRef = useRef<ChordDef | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
 
-  // 把 pendingFeedback 累加进 throttled 记录
+  useEffect(() => { targetRef.current = targetChord; }, [targetChord]);
+  useEffect(() => { chordDetector.setSensitivity(sensitivity); }, [sensitivity]);
+
   const flushFeedback = useCallback(() => {
     const pending = pendingFeedbackRef.current;
     if (!pending) return;
@@ -399,17 +431,19 @@ function ChordDetect() {
     }));
   }, []);
 
-  // 随机出题模式
   const newTarget = useCallback(() => {
-    // 进入新一题前 flush 上一题
     flushFeedback();
     const easy = CHORDS.filter(c => c.difficulty <= 2);
     setTargetChord(easy[Math.floor(Math.random() * easy.length)]);
     setFeedback(null);
+    setActiveChord(null);
+    setActiveHeldMs(0);
+    setActiveConf(0);
+    setProgress(0);
+    setDetState('idle');
   }, [flushFeedback]);
 
   useEffect(() => {
-    // 首次出题（不需要 flush）
     const easy = CHORDS.filter(c => c.difficulty <= 2);
     setTargetChord(easy[Math.floor(Math.random() * easy.length)]);
     setFeedback(null);
@@ -425,28 +459,62 @@ function ChordDetect() {
     }
     setMicState('granted');
     setFeedback(null);
+    setActiveChord(null);
+    setActiveHeldMs(0);
+    setActiveConf(0);
+    setProgress(0);
+    setDetState('idle');
     startRef.current = Date.now();
-    await chordDetector.start((r) => {
-      setResult(r);
-      // 自动判定：如果有目标且匹配
-      if (r?.chord && targetChord && r.chord.id === targetChord.id && r.confidence >= 0.5) {
-        vibrate(15);
-        setFeedback('right');
-        pendingFeedbackRef.current = 'right';
-        setScore(s => ({ right: s.right + 1, total: s.total + 1 }));
-        chordDetector.stop();
-        setListening(false);
+
+    chordDetector.setProfile('practice');
+    chordDetector.setSensitivity(sensitivity);
+
+    await chordDetector.start((event: ChordDetectEvent) => {
+      setDetState(event.state);
+      setProgress(event.progress);
+
+      if (event.active) {
+        setActiveChord(event.active.chord);
+        setActiveHeldMs(event.active.heldMs);
+        setActiveConf(event.active.confidence);
+      } else if (event.raw?.chord) {
+        setActiveChord(event.raw.chord);
+        setActiveHeldMs(0);
+        setActiveConf(event.raw.confidence);
+      } else {
+        setActiveChord(null);
+        setActiveHeldMs(0);
+        setActiveConf(0);
+      }
+
+      if (event.justCommitted) {
+        setCommittedFlash(true);
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = window.setTimeout(() => setCommittedFlash(false), 220);
+
+        // 复合判定：目标和弦 id 匹配 + 置信度 ≥ 0.65 + 持续 ≥ 400ms
+        const tgt = targetRef.current;
+        const c = event.justCommitted;
+        if (tgt && c.chord.id === tgt.id && c.confidence >= 0.65 && c.durationMs >= 400) {
+          vibrate(15);
+          setFeedback('right');
+          pendingFeedbackRef.current = 'right';
+          setScore(s => ({ right: s.right + 1, total: s.total + 1 }));
+          chordDetector.stop();
+          setListening(false);
+        }
       }
     });
     setListening(true);
-  }, [targetChord]);
+  }, [sensitivity]);
 
   const stopListening = useCallback(() => {
     chordDetector.stop();
     setListening(false);
+    setDetState('idle');
+    setProgress(0);
     flushFeedback();
     fireToast();
-    // 重置会话累计，下次开麦重新计
     sessionRightRef.current = 0;
     sessionTotalRef.current = 0;
   }, [flushFeedback, fireToast]);
@@ -459,13 +527,13 @@ function ChordDetect() {
     await startListening();
   }, [listening, stopListening, startListening]);
 
-  // 卸载 / 离开 detect 子模式时 flush + toast
   useEffect(() => () => {
     chordDetector.stop();
     flushFeedback();
     fireToast();
     sessionRightRef.current = 0;
     sessionTotalRef.current = 0;
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
   }, [flushFeedback, fireToast]);
 
   const skipAndNext = () => {
@@ -476,14 +544,20 @@ function ChordDetect() {
     pendingFeedbackRef.current = 'wrong';
   };
 
+  const isMatching = activeChord && targetChord && activeChord.id === targetChord.id;
+  const barClass = 'stability-bar' + (committedFlash ? ' committed' : detState === 'confirmed' || detState === 'committed' ? ' confirmed' : '');
+  const nameClass = 'live-chord-name ' + (committedFlash ? 'committed' : detState === 'confirmed' || detState === 'committed' ? 'confirmed' : 'candidate');
+
   return (
     <>
       <MicPermissionState state={micState} onRetry={startListening} />
 
+      <SensitivityControl value={sensitivity} onChange={setSensitivity} />
+
       {/* 出题模式 */}
       {targetChord && (
         <div className="quiz-prompt">
-          请弹出和弦：<span style={{ color: 'var(--primary)', fontSize: 28 }}>{targetChord.name}</span>
+          请弹出和弦：<span style={{ color: 'var(--brand-strong)', fontSize: 28 }}>{targetChord.name}</span>
           <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-dim)', marginTop: 4 }}>{targetChord.fullName}</div>
         </div>
       )}
@@ -510,20 +584,21 @@ function ChordDetect() {
 
       {/* 实时检测反馈 */}
       {listening && (
-        <div className="tuner-result">
-          {result?.chord ? (
+        <div className="tuner-result" style={{ minHeight: 110 }}>
+          {activeChord ? (
             <>
-              <div className="tuner-note" style={{ color: result.chord.id === targetChord?.id ? 'var(--green)' : 'var(--text)' }}>
-                {result.chord.name}
+              <div className={nameClass} style={{ color: isMatching ? 'var(--success)' : undefined }}>
+                {activeChord.name}
               </div>
-              <div className="tuner-freq">
-                置信度 {Math.round(result.confidence * 100)}% · 检测到 {result.noteNames.join(' ')}
+              <div className="tuner-freq" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>{Math.round(activeConf * 100)}%</span>
+                <span className={barClass} aria-label="稳定度">
+                  <span className="fill" style={{ width: `${Math.round(progress * 100)}%` }} />
+                </span>
+                <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 12 }}>
+                  hold {Math.round(activeHeldMs)}ms
+                </span>
               </div>
-            </>
-          ) : result ? (
-            <>
-              <div className="tuner-note" style={{ fontSize: 18, color: 'var(--text-dim)' }}>识别中…</div>
-              <div className="tuner-freq">检测到 {result.noteNames.join(' ')}</div>
             </>
           ) : (
             <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
@@ -538,19 +613,19 @@ function ChordDetect() {
             ? `正确！识别到 ${targetChord?.name}`
             : `跳过了，正确答案是 ${targetChord?.name}`}
           <div style={{ marginTop: 10 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => { newTarget(); setResult(null); }}>下一题 →</button>
+            <button className="btn btn-primary btn-sm" onClick={() => { newTarget(); }}>下一题 →</button>
           </div>
         </div>
       )}
 
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
         <div>得分：<b>{score.right}</b> / {score.total}</div>
-        <button className="btn btn-sm" onClick={() => { newTarget(); setResult(null); chordDetector.stop(); setListening(false); }}>换一题 →</button>
+        <button className="btn btn-sm" onClick={() => { newTarget(); chordDetector.stop(); setListening(false); }}>换一题 →</button>
       </div>
 
       <div className="card" style={{ marginTop: 10 }}>
-        <p style={{ fontSize: 13 }}>💡 <b>使用技巧</b>：扫弦时尽量让每根弦都清晰响亮。手机尽量靠近吉他音孔。检测基于频谱分析匹配和弦库中的组成音。</p>
-        <p style={{ fontSize: 13 }}>⚠️ 环境安静效果更好。如果识别率不佳，先用「调音器」把琴调准。</p>
+        <p style={{ fontSize: 13 }}>💡 <b>使用技巧</b>：扫弦后保持手型不动 ~0.5 秒，让识别引擎"稳定确认"。复合判定 = 置信度 ≥ 65% + 持续 ≥ 400ms。</p>
+        <p style={{ fontSize: 13 }}>⚠️ 环境安静效果更好。如果一直识别不到，可切换到「宽松」灵敏度。</p>
       </div>
     </>
   );
