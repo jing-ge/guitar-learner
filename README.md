@@ -355,3 +355,55 @@ MIT License
 - 若用户回归发现仍偶尔抖动，可继续调 `MIN_COMMIT` 帧数（live 36 → 48 即 ~800ms）或在严格档加大 ENTER 到 0.68。
 
 **结论**：Round 5 通过率 **12/12 ✅**。状态机 + profile/sensitivity 接口闭环、旧蒙混路径全部删除、UI 三档切换 + stability-bar 样式 + 历史 duration 字段就位、console errors 全程为 0。**建议关 Round 5，进入 Round 6**（待用户真机回归确认节奏稳定后再聚焦下一个吐槽点：候选包括 ChordDetect E7/Am7 等七和弦的 PCP 模板覆盖、或 SoloPage 五声音阶练习的反馈层）。
+
+### Round 6 — 2026-05-15
+**主题**：学习中心视觉收口 —— 4 个子页顶部对齐 SubpageHero + Fretboard 颜色优化
+
+**改动文件**：
+- src/pages/ScalesPage.tsx / PentatonicPage.tsx / CircleOfFifthsPage.tsx / FretboardPage.tsx
+- src/components/Fretboard.tsx
+
+**产品要点**：
+- 学习中心 5 个子页（含 R4 的 ChordsPage）现已视觉统一：SubpageHero + eyebrow + segmented control
+- 删除冗余介绍 card，顶部信息密度优化（h2 介绍卡 grep 0 命中）
+- Fretboard 主音/4 度/5 度/紫色全部对齐 R1 token，提高暗色背景对比
+
+**开发要点**：
+- 复用 R4 的 SubpageHero / .subpage-segmented / .subpage-tabs，不重复造轮子
+- 每页有 MODE_META 配置，title/desc 随模式动态切换
+- Fretboard SVG 度数 label 用 paintOrder + stroke 描边模拟 text-shadow（computed `paint-order: stroke / stroke: rgba(0,0,0,0.55) / stroke-width: 2.5px`，验证通过）
+- 5 个子页的 hub-tab 在 R4 hotfix 后已是统一容器样式（`.hub-tabs` 圆角 16px + active 橙底 #f59e0b）
+
+**Fretboard 颜色对照**：
+| 用途 | Before | After |
+| --- | --- | --- |
+| 主音 | #ef4444 | #FB7185 |
+| 5 度 | #22c55e / #10b981 | #34D399 |
+| 4 度 | #06b6d4 | #22D3EE |
+| 紫（b3 等） | #8b5cf6 / #a855f7 | #A78BFA |
+
+PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a78bfa", "#22d3ee", "#34d399", "#f97316"]`，全部来自新 palette，旧色 0 残留。
+
+**测试结果**（12 用例，全部通过）：
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R6-01 | 学习中心总览 5 个 hub-tab | ✅ | `.hub-tabs` 容器存在（border-radius 16px、bg `rgb(17,24,43)`），5 个 `.hub-tab`，active 橙底 `rgb(245,158,11)` + 深字 `rgb(31,21,0)`。R4.5 hotfix 丸药容器样式生效。 |
+| R6-02 | ChordsPage 基准 | ✅ | SubpageHero 出现，eyebrow `LEARN · CHORDS`，title `和弦库`，desc `47+ 常用和弦 · 按弦图 + 文字说明`，segmented 3 项（和弦库 / 转换练习 / 弹琴检测）。 |
+| R6-03 | ScalesPage 顶部 | ✅ | eyebrow `LEARN · SCALES`，segmented 4 项（学习/听音测试/弹琴识别/跟弹通关）；切到 `听音测试` title→`听音测试`、desc→`App 播放音阶中的一个音，你来辨认`；切到 `跟弹通关` title→`跟弹通关`、desc→`按顺序弹完整条音阶，弹对自动跳到下一个`。3 张截图（top/mode2/mode4）。 |
+| R6-04 | PentatonicPage 顶部 | ✅ | eyebrow `LEARN · PENTATONIC`，title `A 小调五声`（含根音），两个 segmented：类型 3 项（小调五声/大调五声/小调蓝调）+ 把位 5 项（Box 1-5）；切到大调后 title→`A 大调五声`，desc→`民谣 / 流行 / 乡村常用，明亮甜美…`。 |
+| R6-05 | CircleOfFifthsPage 顶部 | ✅ | eyebrow `LEARN · CIRCLE`，title `五度圈`，desc 含 `当前调：C / Am`，segmented 2 项（学习/问答练习），rightSlot 显示 chip 按钮 `隐藏小调`（active 态）。 |
+| R6-06 | FretboardPage 顶部 | ✅ | eyebrow `LEARN · FRETBOARD`，title `指板探索`，desc `点击任意位置发声，自由查看 12 个音的分布`，segmented 2 项（自由探索/找音练习），rightSlot chip 按钮 `↕ 竖屏`（竖横屏切换）。 |
+| R6-07 | 无冗余介绍卡 grep | ✅ | `grep -nE "🎼 音阶学习\|🎯 五声音阶\|⭕ 五度圈\|🎸 指板" src/pages/{Scales,Pentatonic,CircleOfFifths,Fretboard}Page.tsx` → **0 命中**，旧 h2/card 介绍块已清干净。 |
+| R6-08 | 4 子页都用 SubpageHero | ✅ | ScalesPage line 3 import + line 95 用; PentatonicPage line 8 import + line 185 用; CircleOfFifthsPage line 2 import + line 266 用; FretboardPage line 3 import + line 108 用。每个文件 1 次 import + 1 处 JSX。 |
+| R6-09 | Fretboard 颜色 token 化 | ✅ | `grep -nE "#ef4444\|#22c55e\|#06b6d4\|#8b5cf6\|#10b981\|#a855f7"` 在 4 个目标文件 → **0 命中**。旧色完全替换。 |
+| R6-10 | ScalesPage 功能 | ✅ | 4 模式 segmented 切换正常；learn 模式三联 select：根音 12 options（C/C#/D…）、音阶 9 options（自然大调/自然小调/和声小调…）、标签 3 options（度数/音名/不显示）。截图含指板渲染。 |
+| R6-11 | PentatonicPage Fretboard 颜色 | ✅ | SVG 圆点 unique fills = `[#f5f5dc, #fb7185, #a78bfa, #22d3ee, #34d399, #f97316]`，主音圆点确认 `#FB7185` 粉红、5 度确认 `#34D399` 亮绿、4 度 `#22D3EE` 亮青。度数 label "1" "b3" 等 inline style 含 `paint-order: stroke / stroke: rgba(0,0,0,0.55) / stroke-width: 2.5` + fill `#fff`，computed 同步生效，黑色描边阴影确认。 |
+| R6-12 | 5 子页 light 主题 | ✅ | `data-theme=light` 后依次访问 5 个 tab 截图（R6-12a/b/c/d/e）。SubpageHero 在浅色下：bg radial-gradient `rgba(217,119,6,0.18)`（橙弱光） + 蓝弱光 + 白底，color `rgb(31,41,55)`（近黑），eyebrow/title/desc/segmented 都正常显示，5 张截图无塌陷。 |
+
+**控制台 errors 汇总**：全 12 用例期间 `agent-browser console list` 仅 Vite HMR debug + React DevTools info + React Router v7 future flag warning，**无未捕获 error**。
+
+**截图目录**：`/tmp/guitar-test/round6/`（15 张：R6-01/02/03+3b+3c/04/05/06/10/11 + R6-12 light 主题 5 张 a-e）。
+
+**已知遗留**：无。R6 视觉收口完成，5 个子页与全站 SubpageHero 语言一致。
+
+**结论**：Round 6 通过率 **12/12 ✅**。学习中心 5 个子页视觉语言统一、Fretboard 颜色 token 化、暗色 + 浅色双主题均正常。**建议关 Round 6，进入 Round 7**（候选方向延续 R5 末尾建议：ChordDetect 七和弦模板补全 / SoloPage 五声练习反馈层 / 或继续视觉打磨 SettingsPage 等剩余非学习中心页面）。

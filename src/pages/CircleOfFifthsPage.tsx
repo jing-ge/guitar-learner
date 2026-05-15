@@ -1,9 +1,23 @@
 import { useMemo, useState, useCallback } from 'react';
+import SubpageHero from '../components/SubpageHero';
 import { SHARP_NAMES, pcToName } from '../theory/notes';
 import { synth } from '../audio/synth';
 import { CHORDS, chordPlayablePositions } from '../theory/chords';
 
 type ViewMode = 'learn' | 'quiz';
+
+const MODE_META: Record<ViewMode, { label: string; title: string; desc: string }> = {
+  learn: {
+    label: '📖 学习',
+    title: '五度圈',
+    desc: '点击圈上调号查看音阶、顺阶和弦与相邻调性',
+  },
+  quiz: {
+    label: '🎯 问答练习',
+    title: '五度圈问答',
+    desc: '上方五度 / 关系小调 / 调号辨认 三类问题随机抽',
+  },
+};
 
 // 五度圈顺序（顺时针，从 C 开始，每次 +7 半音）
 const FIFTHS_ORDER = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5]; // C G D A E B F#/Gb Db Ab Eb Bb F
@@ -249,17 +263,37 @@ export default function CircleOfFifthsPage() {
 
   return (
     <div>
-      <div className="chip-row" style={{ marginBottom: 12 }}>
-        <button className={'chip' + (mode === 'learn' ? ' active' : '')} onClick={() => setMode('learn')}>
-          📖 学习
-        </button>
-        <button className={'chip' + (mode === 'quiz' ? ' active' : '')} onClick={() => { setMode('quiz'); setQuizAnswered(null); setQuizScore({ right: 0, total: 0 }); }}>
-          🎯 练习
-        </button>
-        <button className={'chip' + (showMinor ? ' active' : '')} onClick={() => setShowMinor(v => !v)}>
-          {showMinor ? '隐藏小调' : '显示小调'}
-        </button>
-      </div>
+      <SubpageHero
+        eyebrow="LEARN · CIRCLE"
+        title={MODE_META[mode].title}
+        desc={`${MODE_META[mode].desc} · 当前调：${MAJOR_NAMES[selectedIdx]} / ${MINOR_NAMES[selectedIdx]}`}
+        rightSlot={
+          <button
+            className={'chip' + (showMinor ? ' active' : '')}
+            onClick={() => setShowMinor(v => !v)}
+            style={{ height: 32 }}
+          >
+            {showMinor ? '隐藏小调' : '显示小调'}
+          </button>
+        }
+      >
+        <div className="subpage-segmented" role="tablist">
+          {(['learn', 'quiz'] as ViewMode[]).map(m => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              className={mode === m ? 'active' : ''}
+              onClick={() => {
+                setMode(m);
+                if (m === 'quiz') { setQuizAnswered(null); setQuizScore({ right: 0, total: 0 }); }
+              }}
+            >
+              {MODE_META[m].label}
+            </button>
+          ))}
+        </div>
+      </SubpageHero>
 
       {/* 五度圈 SVG */}
       <CircleSvg selected={selectedIdx} onSelect={setSelectedIdx} showMinor={showMinor} />
@@ -321,16 +355,25 @@ export default function CircleOfFifthsPage() {
       {mode === 'quiz' && (
         <>
           {/* 测验类型 */}
-          <div className="chip-row" style={{ margin: '12px 0' }}>
-            <button className={'chip' + (quizType === 'next5th' ? ' active' : '')} onClick={() => { setQuizType('next5th'); nextQuiz(); }}>
-              上方五度
-            </button>
-            <button className={'chip' + (quizType === 'relative' ? ' active' : '')} onClick={() => { setQuizType('relative'); nextQuiz(); }}>
-              关系小调
-            </button>
-            <button className={'chip' + (quizType === 'keysig' ? ' active' : '')} onClick={() => { setQuizType('keysig'); nextQuiz(); }}>
-              调号辨认
-            </button>
+          <div className="subpage-segmented" role="tablist" style={{ margin: '12px 0' }}>
+            <button
+              role="tab"
+              aria-selected={quizType === 'next5th'}
+              className={quizType === 'next5th' ? 'active' : ''}
+              onClick={() => { setQuizType('next5th'); nextQuiz(); }}
+            >上方五度</button>
+            <button
+              role="tab"
+              aria-selected={quizType === 'relative'}
+              className={quizType === 'relative' ? 'active' : ''}
+              onClick={() => { setQuizType('relative'); nextQuiz(); }}
+            >关系小调</button>
+            <button
+              role="tab"
+              aria-selected={quizType === 'keysig'}
+              className={quizType === 'keysig' ? 'active' : ''}
+              onClick={() => { setQuizType('keysig'); nextQuiz(); }}
+            >调号辨认</button>
           </div>
 
           <div className="quiz-prompt">{quizQuestion.prompt}</div>

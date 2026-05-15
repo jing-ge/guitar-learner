@@ -1,11 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Fretboard, { type LabelMode } from '../components/Fretboard';
+import SubpageHero from '../components/SubpageHero';
 import { ALL_ROOTS, fretToMidi, pcToName } from '../theory/notes';
 import { synth } from '../audio/synth';
 import { vibrate, vibratePattern } from '../utils/haptic';
 import { recordSession } from '../utils/progress';
 
 type Mode = 'explore' | 'find';
+
+const MODE_META: Record<Mode, { label: string; title: string; desc: string }> = {
+  explore: {
+    label: '🔍 自由探索',
+    title: '指板探索',
+    desc: '点击任意位置发声，自由查看 12 个音的分布',
+  },
+  find: {
+    label: '🎯 找音练习',
+    title: '找音练习',
+    desc: '出题后在指板上找出对应的音，不限定弦',
+  },
+};
 
 export default function FretboardPage() {
   const [mode, setMode] = useState<Mode>('explore');
@@ -63,9 +77,9 @@ export default function FretboardPage() {
   // 探索模式下：展示全部 12 个音 / 仅自然音
   const exploreHighlight = useMemo(() => {
     const palette: Record<number, string> = {
-      0:'#ef4444', 1:'#9ca3af', 2:'#f59e0b', 3:'#9ca3af', 4:'#84cc16',
-      5:'#10b981', 6:'#9ca3af', 7:'#06b6d4', 8:'#9ca3af', 9:'#6366f1',
-      10:'#9ca3af', 11:'#a855f7'
+      0:'#FB7185', 1:'#9ca3af', 2:'#f59e0b', 3:'#9ca3af', 4:'#84cc16',
+      5:'#22D3EE', 6:'#9ca3af', 7:'#34D399', 8:'#9ca3af', 9:'#6366f1',
+      10:'#9ca3af', 11:'#A78BFA'
     };
     if (showAll) return { pcColors: palette };
     return { pcColors: { 0: palette[0], 2: palette[2], 4: palette[4], 5: palette[5], 7: palette[7], 9: palette[9], 11: palette[11] } };
@@ -91,15 +105,37 @@ export default function FretboardPage() {
 
   return (
     <div>
-      {/* 模式切换 */}
-      <div className="chip-row" style={{ marginBottom: 10 }}>
-        <button className={'chip' + (mode === 'explore' ? ' active' : '')} onClick={() => setMode('explore')}>
-          🔍 自由探索
-        </button>
-        <button className={'chip' + (mode === 'find' ? ' active' : '')} onClick={() => { setMode('find'); setAnswered(null); setScore({ right: 0, total: 0 }); }}>
-          🎯 找音练习
-        </button>
-      </div>
+      <SubpageHero
+        eyebrow="LEARN · FRETBOARD"
+        title={MODE_META[mode].title}
+        desc={MODE_META[mode].desc}
+        rightSlot={
+          <button
+            className="chip"
+            onClick={() => setVertical(v => !v)}
+            style={{ height: 32 }}
+          >
+            {vertical ? '↔ 横屏' : '↕ 竖屏'}
+          </button>
+        }
+      >
+        <div className="subpage-segmented" role="tablist">
+          {(['explore', 'find'] as Mode[]).map(m => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={mode === m}
+              className={mode === m ? 'active' : ''}
+              onClick={() => {
+                setMode(m);
+                if (m === 'find') { setAnswered(null); setScore({ right: 0, total: 0 }); }
+              }}
+            >
+              {MODE_META[m].label}
+            </button>
+          ))}
+        </div>
+      </SubpageHero>
 
       {mode === 'explore' && (
         <>
@@ -119,12 +155,6 @@ export default function FretboardPage() {
                 <option value="natural">仅自然音（白键）</option>
               </select>
             </div>
-            <div className="field">
-              <label className="field-label">布局</label>
-              <button className="btn btn-sm" onClick={() => setVertical(v => !v)}>
-                {vertical ? '↔ 横屏' : '↕ 竖屏'}
-              </button>
-            </div>
           </div>
           <div className={vertical ? 'fretboard-vertical-wrap' : 'fretboard-wrap'}>
             <Fretboard
@@ -142,16 +172,11 @@ export default function FretboardPage() {
       {mode === 'find' && (
         <>
           <div className="quiz-prompt">
-            请在指板上找到：<span style={{ color: 'var(--primary)' }}>{ALL_ROOTS[target].sharp}</span>
+            请在指板上找到：<span style={{ color: 'var(--brand-strong)' }}>{ALL_ROOTS[target].sharp}</span>
           </div>
           <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div>得分：<b>{score.right}</b> / {score.total}</div>
-            <div className="row" style={{ gap: 10 }}>
-              <button className="btn btn-sm" onClick={() => setVertical(v => !v)}>
-                {vertical ? '↔ 横屏' : '↕ 竖屏'}
-              </button>
-              <button className="btn btn-sm" onClick={nextQuestion}>换一题 →</button>
-            </div>
+            <button className="btn btn-sm" onClick={nextQuestion}>换一题 →</button>
           </div>
 
           <div className={vertical ? 'fretboard-vertical-wrap' : 'fretboard-wrap'}>

@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Fretboard from '../components/Fretboard';
+import SubpageHero from '../components/SubpageHero';
 import { ALL_ROOTS, pcToName, fretToMidi } from '../theory/notes';
 import { synth } from '../audio/synth';
 import { vibrate } from '../utils/haptic';
@@ -36,13 +37,13 @@ const PENTA_DEFS: Record<PentaKind, { name: string; intervals: number[]; degrees
 };
 
 const DEGREE_COLOR: Record<string, string> = {
-  '1':  '#ef4444', // 根音红色
+  '1':  '#FB7185', // 根音红色（--danger-2）
   '2':  '#f59e0b',
-  'b3': '#8b5cf6',
-  '3':  '#8b5cf6',
-  '4':  '#06b6d4',
+  'b3': '#A78BFA',
+  '3':  '#A78BFA',
+  '4':  '#22D3EE', // 4 度青（--accent-cyan）
   'b5': '#ec4899', // 蓝调音粉色
-  '5':  '#22c55e',
+  '5':  '#34D399', // 5 度绿（--success）
   '6':  '#84cc16',
   'b7': '#f97316',
   '7':  '#f97316',
@@ -70,6 +71,12 @@ const PENTA_BOXES: PentaBox[] = [
   { name: 'Box 4', baseLowFret: 12, baseHighFret: 15, desc: '12-15 品高把位，根音在 3 弦/2 弦' },
   { name: 'Box 5', baseLowFret: 14, baseHighFret: 17, desc: '14-17 品最高把位，回归 1 弦根音' },
 ];
+
+const PENTA_KIND_LABEL: Record<PentaKind, string> = {
+  minor: '小调五声',
+  major: '大调五声',
+  blues: '小调蓝调',
+};
 
 export default function PentatonicPage() {
   const [kind, setKind] = useState<PentaKind>('minor');
@@ -175,18 +182,29 @@ export default function PentatonicPage() {
 
   return (
     <div>
-      {/* 选择音阶类型 */}
-      <div className="section-title">音阶类型</div>
-      <div className="chip-row" style={{ marginBottom: 10 }}>
-        {(['minor', 'major', 'blues'] as PentaKind[]).map(k => (
-          <button key={k} className={'chip' + (kind === k ? ' active' : '')} onClick={() => setKind(k)}>
-            {PENTA_DEFS[k].name}
-          </button>
-        ))}
-      </div>
-      <div className="card" style={{ background: 'var(--bg-soft)' }}>
+      <SubpageHero
+        eyebrow="LEARN · PENTATONIC"
+        title={`${pcToName(rootPc)} ${def.name}`}
+        desc={def.desc}
+      >
+        <div className="subpage-segmented" role="tablist">
+          {(['minor', 'major', 'blues'] as PentaKind[]).map(k => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={kind === k}
+              className={kind === k ? 'active' : ''}
+              onClick={() => setKind(k)}
+            >
+              {PENTA_KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
+      </SubpageHero>
+
+      {/* 当前调式说明卡 */}
+      <div className="card" style={{ background: 'var(--bg-elev-1)' }}>
         <p style={{ margin: 0, fontSize: 13 }}>
-          <b>{def.name}</b>：{def.desc}<br />
           💡 {def.tip}
         </p>
         <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -197,7 +215,7 @@ export default function PentatonicPage() {
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 minWidth: 50, height: 36, padding: '0 10px',
                 borderRadius: 8, fontWeight: 700, fontSize: 14,
-                background: DEGREE_COLOR[d] || 'var(--primary)',
+                background: DEGREE_COLOR[d] || 'var(--brand)',
                 color: '#fff',
               }}>
                 {d} = {pcToName(pc)}
@@ -220,15 +238,21 @@ export default function PentatonicPage() {
       {/* 把位选择 */}
       <div className="section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>把位（Position / Box）</span>
-        <label style={{ fontSize: 12, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 400 }}>
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontWeight: 400 }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
           显示全指板
         </label>
       </div>
       {!showAll && (
-        <div className="chip-row" style={{ marginBottom: 10 }}>
+        <div className="subpage-segmented" role="tablist" style={{ marginBottom: 10 }}>
           {PENTA_BOXES.map((b, i) => (
-            <button key={i} className={'chip' + (boxIdx === i ? ' active' : '')} onClick={() => setBoxIdx(i)}>
+            <button
+              key={i}
+              role="tab"
+              aria-selected={boxIdx === i}
+              className={boxIdx === i ? 'active' : ''}
+              onClick={() => setBoxIdx(i)}
+            >
               {b.name}
             </button>
           ))}

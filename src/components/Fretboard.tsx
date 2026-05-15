@@ -104,7 +104,7 @@ export default function Fretboard({
         let color = highlight?.pcColors?.[pc];
         const isRoot = highlight?.rootPc === pc;
         if (!highlight) color = '#9ca3af';
-        if (!color && isRoot) color = '#ef4444';
+        if (!color && isRoot) color = '#FB7185';
         if (!color) continue;
 
         const fretP = fretCenterPos(f);
@@ -152,6 +152,8 @@ export default function Fretboard({
     >
       {/* 指板底色 */}
       <rect x={bgX} y={bgY} width={bgW} height={bgH} fill="#3a2a1d" rx={3} />
+      {/* 指板内描边（增强边界） */}
+      <rect x={bgX + 0.5} y={bgY + 0.5} width={bgW - 1} height={bgH - 1} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={1} rx={3} />
 
       {/* 琴枕 */}
       {fromFret === 0 && (
@@ -268,12 +270,24 @@ export default function Fretboard({
               </>
             )}
             <circle cx={d.cx} cy={d.cy} r={11}
-              fill={isActive ? '#f59e0b' : d.color}
+              fill={isActive ? '#FFB938' : d.color}
               stroke={isActive ? '#fff' : d.isRoot ? '#fff' : 'rgba(255,255,255,0.5)'}
               strokeWidth={isActive ? 2.5 : d.isRoot ? 2 : 1}
             />
             {d.label && (
-              <text x={d.cx} y={d.cy + 4} fontSize={11} fontWeight={600} fill={isActive ? '#1f1500' : '#fff'} textAnchor="middle">
+              <text
+                x={d.cx} y={d.cy + 4}
+                fontSize={12}
+                fontWeight={700}
+                fill={isActive ? '#1f1500' : '#fff'}
+                textAnchor="middle"
+                style={{
+                  paintOrder: 'stroke',
+                  stroke: 'rgba(0,0,0,0.55)',
+                  strokeWidth: 2.5,
+                  strokeLinejoin: 'round',
+                }}
+              >
                 {d.label}
               </text>
             )}

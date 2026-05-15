@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Fretboard from '../components/Fretboard';
+import SubpageHero from '../components/SubpageHero';
 import { ALL_ROOTS, fretToMidi, pcToName, semitonesToDegree } from '../theory/notes';
 import { SCALES, scalePitchClasses, type ScaleDef } from '../theory/scales';
 import { synth } from '../audio/synth';
@@ -9,11 +10,35 @@ import { recordSession } from '../utils/progress';
 
 type PageMode = 'learn' | 'earTest' | 'playTest' | 'followAlong';
 
+const MODE_META: Record<PageMode, { label: string; title: string; desc: string }> = {
+  learn: {
+    label: '📖 学习',
+    title: '音阶学习',
+    desc: '查看音阶在指板上的分布、播放上下行示范',
+  },
+  earTest: {
+    label: '👂 听音测试',
+    title: '听音测试',
+    desc: 'App 播放音阶中的一个音，你来辨认',
+  },
+  playTest: {
+    label: '🎸 弹琴识别',
+    title: '弹琴识别',
+    desc: '出题后用麦克风识别你弹出的音',
+  },
+  followAlong: {
+    label: '🏃 跟弹通关',
+    title: '跟弹通关',
+    desc: '按顺序弹完整条音阶，弹对自动跳到下一个',
+  },
+};
+
 export default function ScalesPage() {
   const [rootPc, setRootPc] = useState(0);
   const [scaleId, setScaleId] = useState<string>('major');
   const [labelMode, setLabelMode] = useState<'name' | 'degree' | 'none'>('degree');
   const [pageMode, setPageMode] = useState<PageMode>('learn');
+  const modes: PageMode[] = ['learn', 'earTest', 'playTest', 'followAlong'];
   const [activePos, setActivePos] = useState<{ stringNum: number; fret: number } | null>(null);
   const activePosTimers = useRef<number[]>([]);
   const [scaleSpeed, setScaleSpeed] = useState(220); // ms per note
@@ -23,7 +48,7 @@ export default function ScalesPage() {
 
   const highlight = useMemo(() => {
     const colors: Record<number, string> = {};
-    pcs.forEach((pc, idx) => { colors[pc] = idx === 0 ? '#ef4444' : '#06b6d4'; });
+    pcs.forEach((pc, idx) => { colors[pc] = idx === 0 ? '#FB7185' : '#22D3EE'; });
     return { pcColors: colors, rootPc, onlyPcs: pcs };
   }, [pcs, rootPc]);
 
@@ -67,38 +92,52 @@ export default function ScalesPage() {
 
   return (
     <div>
-      {/* 模式切换 */}
-      <div className="chip-row" style={{ marginBottom: 10 }}>
-        <button className={'chip' + (pageMode === 'learn' ? ' active' : '')} onClick={() => setPageMode('learn')}>📖 学习</button>
-        <button className={'chip' + (pageMode === 'earTest' ? ' active' : '')} onClick={() => setPageMode('earTest')}>👂 听音测试</button>
-        <button className={'chip' + (pageMode === 'playTest' ? ' active' : '')} onClick={() => setPageMode('playTest')}>🎸 弹琴识别</button>
-        <button className={'chip' + (pageMode === 'followAlong' ? ' active' : '')} onClick={() => setPageMode('followAlong')}>🏃 跟弹通关</button>
-      </div>
+      <SubpageHero
+        eyebrow="LEARN · SCALES"
+        title={MODE_META[pageMode].title}
+        desc={MODE_META[pageMode].desc}
+      >
+        <div className="subpage-segmented" role="tablist">
+          {modes.map(m => (
+            <button
+              key={m}
+              role="tab"
+              aria-selected={pageMode === m}
+              className={pageMode === m ? 'active' : ''}
+              onClick={() => setPageMode(m)}
+            >
+              {MODE_META[m].label}
+            </button>
+          ))}
+        </div>
+      </SubpageHero>
 
       {/* 调性/音阶选择（所有模式共用） */}
-      <div className="row" style={{ marginBottom: 10 }}>
-        <div className="field">
-          <label className="field-label">主音</label>
-          <select className="select" value={rootPc} onChange={e => setRootPc(+e.target.value)}>
-            {ALL_ROOTS.map(r => (<option key={r.pc} value={r.pc}>{r.sharp}{r.sharp !== r.flat ? ` / ${r.flat}` : ''}</option>))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="field-label">音阶</label>
-          <select className="select" value={scaleId} onChange={e => setScaleId(e.target.value)}>
-            {SCALES.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-          </select>
-        </div>
-        {pageMode === 'learn' && (
+      <div className="card">
+        <div className="row">
           <div className="field">
-            <label className="field-label">标签</label>
-            <select className="select" value={labelMode} onChange={e => setLabelMode(e.target.value as any)}>
-              <option value="degree">度数</option>
-              <option value="name">音名</option>
-              <option value="none">不显示</option>
+            <label className="field-label">主音</label>
+            <select className="select" value={rootPc} onChange={e => setRootPc(+e.target.value)}>
+              {ALL_ROOTS.map(r => (<option key={r.pc} value={r.pc}>{r.sharp}{r.sharp !== r.flat ? ` / ${r.flat}` : ''}</option>))}
             </select>
           </div>
-        )}
+          <div className="field">
+            <label className="field-label">音阶</label>
+            <select className="select" value={scaleId} onChange={e => setScaleId(e.target.value)}>
+              {SCALES.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+            </select>
+          </div>
+          {pageMode === 'learn' && (
+            <div className="field">
+              <label className="field-label">标签</label>
+              <select className="select" value={labelMode} onChange={e => setLabelMode(e.target.value as any)}>
+                <option value="degree">度数</option>
+                <option value="name">音名</option>
+                <option value="none">不显示</option>
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* === 学习模式 === */}
