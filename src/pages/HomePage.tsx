@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopMistakes } from '../utils/progress';
+import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopMistakes, loadAll } from '../utils/progress';
 import { loadSavedProgressions, type SavedProgression } from '../utils/saved-progressions';
 import { CHORDS } from '../theory/chords';
 import ChordDiagram from '../components/ChordDiagram';
@@ -78,6 +78,7 @@ function getRecommendation(
   summary: ReturnType<typeof getPracticeSummary>,
   today: ReturnType<typeof getTodayStats>,
   savedToPractice: SavedProgression | null,
+  fullyTunedToday: boolean,
 ) {
   if (savedToPractice) {
     return `练习你保存的「${savedToPractice.name}」（${savedToPractice.ids.length}个和弦）`;
@@ -87,6 +88,9 @@ function getRecommendation(
   }
   if (!summary.tunedToday) {
     return '今天还没调音，先把琴调准，再进入综合训练。';
+  }
+  if (fullyTunedToday) {
+    return '🎸 已完整调音，开始练习吧！';
   }
   if (today.totalSeconds < 600) {
     return '已调音 ✓，再来一次听歌识别或听音辨认。';
@@ -156,7 +160,13 @@ function HomePageInner() {
   const topMistakes = useMemo(() => getTopMistakes(3), []);
   const primaryAction = getPrimaryAction(summary);
   const greeting = getGreeting(summary);
-  const recommendText = getRecommendation(summary, today, savedToPractice);
+  const fullyTunedToday = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayRec = loadAll().find(r => r.date === todayStr);
+    const sessions = Array.isArray(todayRec?.sessions) ? todayRec.sessions : [];
+    return sessions.some(s => s.module === 'tuner-full');
+  }, []);
+  const recommendText = getRecommendation(summary, today, savedToPractice, fullyTunedToday);
   const newbieActivated = searchParams.get('start') === 'newbie';
 
   const handlePracticeSaved = () => {

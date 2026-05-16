@@ -510,9 +510,54 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 
 **结论**：Round 8 通过率 **11/12 ✅ + 1 ⚠️**。R8-04 的 ⚠️ 是"代码与 CSS 自洽但与文案期望不符" — ChordsPage 用 `children` 传 segmented 而非 `rightSlot`，按既有 CSS 走单列；属于设计取舍非缺陷，未做修改（不引入跨文件改动）。其他 11 用例完全通过：PWA 元数据齐全且对齐暗主题、桌面 1100px / 移动竖屏 / 横屏紧凑三套布局生效、focus-visible+skip-link+ARIA tablist+chord-card 键盘可选齐备、ChordDiagram memo 命中、R6/R7 业务闭环零破坏。R8 体面收口达成。
 
+### Round 9 — 2026-05-16
+**主题**：TunerPage 体验打磨 + 调音器完成度首页打通
+
+**改动文件**：
+- src/pages/TunerPage.tsx（仪表盘半圆 SVG / 6 弦网格 / tunedSet / 成功卡）
+- src/pages/HomePage.tsx（getRecommendation fullyTunedToday 分支）
+- src/styles/global.css（R9 .tuner-* 系列样式）
+
+**产品要点**：
+- 调音器从功能页升级为"有反馈感"的新手友好页面
+- 半圆刻度仪表盘 + 橙色指针 + in-tune 绿色脉冲
+- 6 弦按钮 3 列网格，每张卡显示弦序/音名/频率/状态
+- 6 根全调准触发庆祝卡 + ProgressToast + 写 tuner-full
+- 首页 fullyTunedToday 分支推荐"开始练习"
+
+**开发要点**：
+- 复用 R4 SubpageHero / R2 MicPermissionState / R2 ProgressToast / R2 vibrate
+- recordSession('tuner-full', 1, 1, sec) 与 R2 已有 'tuner' 并存
+- 仪表盘 SVG 用 useId 生成 filter id 避免冲突
+- 旧 .tuner-* 类被其他页面引用，保留不删
+
+**测试结果**（12 用例）：
+| 用例 | 描述 | 结果 | 备注 |
+| --- | --- | --- | --- |
+| R9-01 | SubpageHero（PRACTICE · TUNER） | ✅ | `/#/practice` → 调音器：顶部 SubpageHero 完整渲染，eyebrow="PRACTICE · TUNER"、title="调音器"、desc="允许麦克风后弹一根弦"；主按钮"🎤 开始调音"居中。 |
+| R9-02 | 半圆仪表盘空闲态 | ✅ | `document.querySelectorAll('svg line')` 共 21 个刻度线；body 文本同时包含 `-50` / `-25` / `0` / `+25` / `+50`，中央占位 `—`；未启动时指针不渲染、枢轴小圆点居中。 |
+| R9-03 | 6 弦按钮 3 列网格 | ✅ | `aria-label*="弦"` 共 6 个按钮，container `display: grid` + `grid-template-columns: 115.328px 115.328px 115.344px`（390 视口）；每卡文本结构 `6E\|82.4\|Hz\|点击试听`...`1E\|329.6\|Hz\|点击试听`，弦序 6→1。 |
+| R9-04 | 试听 active 边框 | ✅ | 点击 6E 卡：6E classList 含 `active`、border `rgb(245,158,11)` 2px；其余 5 卡保持 `rgba(255,255,255,0.08)` 1px 默认描边。 |
+| R9-05 | 模拟 in-tune 触发成功卡 | ✅ | monkey-patch `pitchDetector.start` + 兜底 `navigator.mediaDevices.getUserMedia` 后点击"🎤 开始调音"；MutationObserver 抓到 peak 帧：6 张卡同时显示 `✓ 已调准` + `.tuner-success-card` DOM 同帧出现（celebration=true，tunedCount=6）；约 1.3s 后 fade out，tunedSetRef 重置。屏幕底部 ProgressToast 实测显示"✓ 6 根弦已全部调准"。 |
+| R9-06 | progress 写入 tuner-full | ✅ | `localStorage.getItem('guitar-learner-progress')` 末日 `sessions.map(s=>s.module)` = `['tuner','tuner-full','tuner','tuner-full',...]`；tuner-full sec=6，与 sessionStartRef 时差吻合。 |
+| R9-07 | fullyTunedToday 分支文案 | ✅ | `/#/home` 推荐卡 heading 文本 `🎸 已完整调音，开始练习吧！`；进度数据来自 R9-05 实跑的 tuner+tuner-full。 |
+| R9-08 | 推荐 CTA 跳转 | ✅ | 点击"去完成推荐"link 后 `agent-browser get url` 输出 `http://0.0.0.0:5173/#/practice`，跳转目标正确。 |
+| R9-09 | 仅 tuner（未全调） | ✅ | 注入 `[{sessions:[{module:'tuner',...}]}]` + reload：推荐卡文本 `已调音 ✓，再来一次听歌识别或听音辨认。`（旧分支），**未** 出现"🎸 已完整调音"。 |
+| R9-10 | 清空 progress 初始引导 | ✅ | `localStorage.removeItem('guitar-learner-progress')` + reload：推荐卡 `第一次来，先调音，再做一次听音辨认热身。`，进入新手引导分支。 |
+| R9-11 | light 主题不崩 | ✅ | `localStorage.setItem('guitar-learner-theme','light')` + reload：`data-theme="light"`、body bg `rgb(246,248,251)`；TunerPage 上 SubpageHero / 仪表盘 SVG / 3 列弦网格 (`115.3px × 3`) 全部存在，console errors=0。 |
+| R9-12 | 320 宽移动端 | ✅ | `set viewport 320 568` 后 TunerPage：grid `92px × 3` 不溢出（gridRight=308 ≤ viewport 320，`document.documentElement.scrollWidth === clientWidth`）；仪表 wrap 居中（left=12, right=308, w=296），未被切掉。 |
+
+**控制台 errors**：全 12 用例期间仅出现 Vite HMR debug、React DevTools info、React Router v6→v7 future-flag warning（前几轮已知），**无未捕获 error / TypeError**。
+
+**截图目录**：`/tmp/guitar-test/round9/`（共 15 张：R9-01 ~ R9-04、R9-05 主图 + R9-05a/b/c/d 多时点辅图、R9-07 ~ R9-12；R9-06 为纯 localStorage 验证无截图）。
+
+**实测发现**（不修，留档）：调音中 `targetString` 经渲染再 ref 更新存在 1 帧滞后，跨弦切换瞬间会把上一弦的 cents 算成相邻弦频率（出现 +400/+500¢ 偏差读数）；不影响 tunedSet 累积与 tuner-full 写入，且真实弹奏场景下不会出现"一帧跳两根弦"的输入。如后续要做"per-string cents 持久化展示"再回头优化。
+
+**结论**：Round 9 通过率 **12/12 ✅**。TunerPage 视觉重构（SubpageHero + 半圆仪表盘 + 6 弦网格）、tunedSet 业务闭环（6 根全调准 → 庆祝卡 + ProgressToast + tuner-full）、HomePage fullyTunedToday 推荐分支三件套全部跑通；浅色/320 窄屏兼容性 OK，控制台零错误。**建议关 Round 9，进入 Round 10**（候选方向：① 听音辨认/节拍训练页统一为 SubpageHero 风格收尾对齐；② TunerPage 真 mic 环境下指针+音频联动二次验证；③ 设置页 / 数据导入导出 / 多语种切换；④ 30 天热力图升级为"模块分布饼图"或"近 7 日趋势"）。
+
 ---
 
-## 🎉 8 轮迭代全部完成
+## 🎉 9 轮迭代全部完成
 
 - Round 1 c100f76: 首页"今日练什么"重构 + 练习中心减负
 - Round 2 0bd57f2: 进度闭环 + 学习中心对齐 + 麦克风权限统一
@@ -522,3 +567,4 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - Round 6 cf40b5b: 学习中心 4 子页对齐 + Fretboard 颜色 token
 - Round 7 9c09984: 识别→保存进行 + 弱项追踪 + 首页推荐
 - Round 8 ________: PWA / 响应式 / 可达性 / 性能收口
+- Round 9 ________: TunerPage 打磨 + 调音器完成度首页打通

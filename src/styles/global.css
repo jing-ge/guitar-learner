@@ -1185,3 +1185,67 @@ input, select, textarea { font-size: 16px; }
 .sp-ids { font-size: 13px; color: var(--text-body); margin: 6px 0 10px; word-break: break-all; }
 .sp-actions { display: flex; gap: 8px; }
 
+/* ========== R9: Tuner gauge ========== */
+.tuner-gauge-svg { width: 100%; max-width: 320px; height: auto; display: block; margin: 0 auto; }
+.tuner-needle { transition: transform 80ms linear; transform-origin: 160px 160px; }
+.tuner-needle.in-tune line { stroke: var(--success); }
+.tuner-needle.in-tune circle { r: 10; fill: var(--success); }
+.tuner-cent-display { font-size: 40px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-strong); text-align: center; margin-top: 8px; }
+.tuner-cent-display.in-tune { color: var(--success); }
+.tuner-note-display { font-size: 16px; line-height: 22px; font-weight: 600; color: var(--text-body); text-align: center; margin-top: 4px; }
+
+.tuner-gauge-wrap.in-tune { box-shadow: 0 0 24px rgba(52,211,153,0.40); border-radius: var(--radius-lg); animation: tunerPulse 1.2s ease-in-out infinite; }
+@keyframes tunerPulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(52,211,153,0.40); }
+  50%      { box-shadow: 0 0 36px rgba(52,211,153,0.60); }
+}
+
+.tuner-strings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+.tuner-string-card {
+  min-height: 64px;
+  padding: 10px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line-soft);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer;
+  transition: background 180ms var(--ease-out), border 180ms var(--ease-out), transform 120ms var(--ease-out);
+}
+.tuner-string-card:hover { background: rgba(245,158,11,0.06); }
+.tuner-string-card:active { transform: scale(0.97); }
+.tuner-string-card.active { border: 2px solid var(--brand); background: rgba(245,158,11,0.10); padding: 9px 7px; }
+.tuner-string-card .ts-name { font-size: 18px; line-height: 22px; font-weight: 800; color: var(--text-strong); }
+.tuner-string-card .ts-freq { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-muted); }
+.tuner-string-card .ts-status { font-size: 11px; line-height: 14px; font-weight: 600; }
+.tuner-string-card .ts-status.ok    { color: var(--success); }
+.tuner-string-card .ts-status.bad   { color: var(--danger-2); }
+.tuner-string-card .ts-status.idle  { color: var(--text-muted); }
+
+.tuner-success-card {
+  position: fixed;
+  top: 30%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1100;
+  padding: 24px 32px;
+  border-radius: var(--radius-lg);
+  background: var(--hero-grad);
+  box-shadow: var(--brand-ring);
+  text-align: center;
+  animation: tunerSuccessIn 200ms var(--ease-out), tunerSuccessOut 200ms var(--ease-out) 1000ms forwards;
+  pointer-events: none;
+}
+.tuner-success-card .tsc-emoji { font-size: 36px; line-height: 1; }
+.tuner-success-card .tsc-title { font-size: 18px; line-height: 24px; font-weight: 800; color: var(--text-strong); margin-top: 8px; }
+.tuner-success-card .tsc-sub   { font-size: 13px; line-height: 18px; color: var(--text-body); margin-top: 4px; }
+@keyframes tunerSuccessIn  { from { opacity: 0; transform: translate(-50%, -45%) scale(0.92); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes tunerSuccessOut { to { opacity: 0; transform: translate(-50%, -55%) scale(1.02); } }
+
+[data-theme="light"] .tuner-string-card { background: rgba(0,0,0,0.04); }
+[data-theme="light"] .tuner-string-card.active { background: rgba(217,119,6,0.10); }
+[data-theme="light"] .tuner-gauge-wrap.in-tune { box-shadow: 0 0 24px rgba(5,150,105,0.32); }
+
