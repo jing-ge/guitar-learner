@@ -28,3 +28,4 @@ native/android/
 native/ios/
 native/.expo/
 native/assets/web/
+tsconfig.tsbuildinfo
