@@ -1,6 +1,8 @@
 /**
  * 把上层 Web 项目的 dist/ 复制到 native/assets/web/
  * EAS Build 在云端构建时也会执行这个脚本（通过 eas-build-pre-install）
+ *
+ * 注意：复制前会先清空目标目录，避免旧 hash 资产堆积导致 APK 越来越大。
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +23,14 @@ function copyDir(s, d) {
     else fs.copyFileSync(sp, dp);
   }
 }
+
+function rmDir(d) {
+  if (!fs.existsSync(d)) return;
+  fs.rmSync(d, { recursive: true, force: true });
+}
+
+console.log('[copy-web] 清理旧 assets/web/ ...');
+rmDir(dest);
 
 console.log('[copy-web] 复制 dist/ → assets/web/ ...');
 copyDir(src, dest);
