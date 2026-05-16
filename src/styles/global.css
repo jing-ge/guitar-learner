@@ -255,11 +255,21 @@ a:focus-visible,
 }
 .hero-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 8px;
   margin-top: 16px;
 }
-.hero-btn { flex: 1 1 160px; }
+.hero-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .hero-inline-tip {
   margin-top: 12px;
   padding: 10px 12px;
@@ -985,8 +995,8 @@ input, select, textarea { font-size: 16px; }
 @media (max-width: 480px) {
   .app-main { padding: 10px 12px 18px; }
   .hero-card { padding: 18px; }
-  .hero-actions { flex-direction: column; }
-  .hero-btn { width: 100%; }
+  .hero-actions { gap: 6px; margin-top: 12px; }
+  .hero-btn { font-size: 13px; padding: 0 10px; min-height: 40px; }
   .home-grid-modules { grid-template-columns: 1fr; }
   .subpage-header {
     grid-template-columns: 1fr;
@@ -999,6 +1009,11 @@ input, select, textarea { font-size: 16px; }
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+@media (max-width: 360px) {
+  /* 极窄屏（小型 Android）允许文案换 2 行避免溢出 */
+  .hero-btn { white-space: normal; line-height: 1.25; padding: 6px 8px; }
 }
 
 /* ========== Hub Tabs（学习中心 5 个一级 tab）========== */
