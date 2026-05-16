@@ -21,7 +21,25 @@ let html = readFileSync(htmlPath, 'utf8');
 // 收集 inline 后可以删除的资产文件名（仅在 dist/assets/ 下）
 const inlinedFiles = new Set();
 
+// 收集 JS 内容（按出现顺序），后面统一插到 </body> 之前
+const collectedJs = [];
+
+/**
+ * 把 JS 代码转义成可以安全嵌入 <script>...</script> 的形式：
+ *   - </script>  --> <\/script>   (否则 HTML parser 会提前结束 script 标签)
+ *   - <!--       --> <\!--        (老浏览器把 <!-- 当注释开始；也会破坏后续解析)
+ *   - <script    --> <\script     (嵌套 script 防御，理论上不需要但保险)
+ * 这是 W3C/HTML5 规范里 inline JS 的标准做法。
+ */
+function escapeForInlineScript(code) {
+  return code
+    .replace(/<\/(script\b)/gi, '<\\/$1')
+    .replace(/<!--/g, '<\\!--');
+}
+
 // 匹配 <script type="module" crossorigin src="./assets/xxx.js"></script>
+// 把原标签从 <head> 里删掉，内容留到 body 末尾再 inline，
+// 避免 inline 后脚本在 <head> 立即执行时 #root 还不存在。
 html = html.replace(
   /<script\b[^>]*\bsrc=["']\.\/assets\/([^"']+\.js)["'][^>]*>\s*<\/script>/g,
   (_, fname) => {
@@ -32,14 +50,14 @@ html = html.replace(
     }
     const code = readFileSync(fpath, 'utf8');
     inlinedFiles.add(fname);
-    console.log('[inline-dist] inline JS:', fname, `(${(code.length / 1024).toFixed(1)} kB)`);
-    // 用 noModule 替代 module，确保 file:// 下能执行
-    // 注意：原本是 type="module"，inline 后 React 单文件构建不需要 module 语义
-    return `<script>${code}</script>`;
+    collectedJs.push({ fname, code });
+    console.log('[inline-dist] collect JS:', fname, `(${(code.length / 1024).toFixed(1)} kB)`);
+    return '';
   }
 );
 
 // 匹配 <link rel="stylesheet" crossorigin href="./assets/xxx.css">
+// CSS 可以原地 inline 到 <head>（在 <body> 之前应用，不影响 DOM 就绪）
 html = html.replace(
   /<link\b[^>]*\bhref=["']\.\/assets\/([^"']+\.css)["'][^>]*>/g,
   (_, fname) => {
@@ -54,6 +72,20 @@ html = html.replace(
     return `<style>${css}</style>`;
   }
 );
+
+// 把收集到的 JS 在 </body> 前 inline，此时 DOM 已完整，#root 一定存在
+// 注意：JS 字面量里可能含 "</body>" 字符串（例如 React/Router 内部），
+// 必须用 lastIndexOf 替换最后一个（真正的 HTML 闭合标签），不能用 .replace 替换第一个。
+if (collectedJs.length > 0) {
+  const scripts = collectedJs.map(({ code }) => `<script>${escapeForInlineScript(code)}</script>`).join('\n');
+  const closeIdx = html.lastIndexOf('</body>');
+  if (closeIdx >= 0) {
+    html = html.slice(0, closeIdx) + scripts + '\n  ' + html.slice(closeIdx);
+  } else {
+    // 兜底：如果模板没有 </body>，追加到末尾
+    html += scripts;
+  }
+}
 
 writeFileSync(htmlPath, html);
 console.log('[inline-dist] wrote', htmlPath, `(${(html.length / 1024).toFixed(1)} kB total)`);
