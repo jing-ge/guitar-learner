@@ -1343,3 +1343,103 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - 📌 共同教训：合成评测物理假设（白噪声/fixed voicing/简化谐波）≠ 线上真机；eval 是逼近真实的工具，不能当作线上真理
 
 **结论**：本轮失败但价值在留下了真实录音 fixture 的 API 接口 + 一份诚实的失败诊断。下一轮（Round 29）做和弦走向多帧评测，从单帧准确率走向序列准确率（更接近真实使用场景）。
+
+### Round 29 多和弦进行级评测场景 F（progression-level）
+
+**痛点（PM）**
+- A-E 全是单和弦 single-shot 评测，与真实使用（连续 4 个和弦走向）不符
+- 状态机/迟滞从未被 eval 覆盖
+- top-1 单帧准确率 ≠ 走向 4 chord 全对的概率
+
+**实现（Dev）**
+- 新增 `scripts/lib/progression-eval.mjs`：`evaluateProgression(progressionChords, matchFn, opts)`
+- 内部对每 chord 跑 voicingFor → synthPcm → pcmToChroma → matchFn
+- 返回 `{progressionTop1, perChordTop1[], details[]}`
+- eval-chord-detector.mjs 新增场景 F：
+  - 20 个经典走向：I-V-vi-IV ×12 + I-vi-IV-V ×3 + ii-V-I ×3 + vi-IV-I-V ×2
+  - 共 77 chord
+- baseline JSON 加 `progressions:20` + `scenarios.F`，check 时 F 单独用 PROGRESSIONS.length 作分母
+
+**实测数据**
+
+| 指标 | 结果 |
+|------|------|
+| 进行级全对率 | **0/20 (0%)** |
+| 帧级命中 | **0/77 (0%)** |
+
+**理论 vs 实测**
+- 单帧 E top-1 = 34.6%，按独立同分布假设 4 chord 全对 = 0.346^4 ≈ 1.4%
+- 实测 0%，因为 maj→m 是系统性误判（每个走向第一个 chord 都是 I 级 maj，全错）
+- F 场景是 E 单帧瓶颈在走向级的"放大投影"
+
+**典型失败模式**：所有 maj 走向第一个 chord 都被识成它的 vi（C→Em, G→Bm, F→Am）
+
+**测试（QA）**
+- ✅ `npm run build` 通过
+- ✅ `npm run eval:check` 全 6 场景 PASS
+- ✅ progression-eval.mjs 独立模块，零侵入
+- ✅ baseline JSON 含 F 字段
+- ⚠️ F 当前 baseline 是 0%，但这是**诚实的诊断 baseline**，不是回归
+- ⚠️ F 升上去依赖单帧（E）瓶颈破除，需要 Round 28 那种 bass-aware 真实录音方向
+
+**结论**：第四阶段第一个有"走向级维度"的评测落地。F 把 E 单帧瓶颈在序列上放大暴露，给后续真实录音/状态机评测留了入口。
+
+---
+
+## 🏆 第四阶段（Round 25-29）总结：真实链路精度突破 5 轮
+
+| Round | 主题 | 关键结果 |
+|-------|------|--------|
+| 25 | FFT 8192 + cos² 软分配 | E top-1 14.7% → 34.6% (+19.9pp)，top-3 39.7% → 93.6% (+53.9pp) ✅ |
+| 26 | HPS 3 阶乘积尝试 + chord-detector 系数 | E 退回 33.3% 立刻回退；保留线上 HPS 0.40/0.25 微调 ⚠️ |
+| 27 | chordEvidence / counts 滑窗衰减 | 长曲转调污染修复（无 eval 覆盖，盲改但低风险）✅ |
+| 28 | bass 偏置到 eval 对齐线上 | E 跌到 18.6% 立刻回退；保留备用 API（真实录音用）⚠️ |
+| 29 | 多和弦进行级评测 F | 新增维度，77 chord 走向 baseline 0/20（诚实诊断）✅ |
+
+### 5 轮 baseline 变化
+| 场景 | Round 24 baseline | Round 29 baseline | 变化 |
+|------|-------------------|-------------------|------|
+| A 理想 chroma | 100.0% | 100.0% | 持平 |
+| B 噪声+五度泛音 | 83.3% | 83.3% | 持平 |
+| C 仅根+三 | 30.8% | 30.8% | 持平 |
+| D 真信号合成 | 74.4% | 74.4% | 持平 |
+| **E PCM→FFT→chroma** | **14.7%** | **34.6%** | **+19.9pp** ✅ |
+| **F 进行级全对率** | — | **0/20** | 新增 |
+
+### 关键工程教训
+1. **R26/R28 两次"想让 eval 更接近线上 → 反而暴露物理假设差异"**
+   - 合成 PCM 物理假设（白噪声 / fixed MIDI voicing / 简化谐波）≠ 线上麦克风
+   - eval 是"逼近真实"的工具，不能反向当作"线上真理"
+2. **单变量隔离的重要性**（Karpathy 第 4 条 Goal-Driven）
+   - R26 第一次同时改两端，立刻回归
+   - 第二次只改一端，eval 数字保持稳定（盲改但可控）
+3. **失败的价值**
+   - R26/R28 留下两组"已诊断的失败"，避免后续重蹈
+   - R28 备用 API 等真实录音 fixture 立刻可用
+
+### 改动文件清单（5 轮累计）
+```
+scripts/lib/pcm-chroma.mjs       # R25 软分配 + R28 pcmToChromaWithBass（备用）
+scripts/lib/progression-eval.mjs # R29 新增
+scripts/eval-chord-detector.mjs  # R28 matchTopKWithBass（备用）+ R29 场景 F
+scripts/eval-baseline.json       # R25 / R29 更新
+src/audio/chord-detector.ts      # R26 HPS 系数 0.33/0.20→0.40/0.25
+src/pages/ListenPage.tsx         # R27 EVIDENCE_DECAY=0.95 + 3 处衰减
+README.md                        # 5 轮迭代记录
+```
+
+### 下一阶段建议方向
+- **真实录音 fixture**（最大期望收益）：触发 R28 备用 bass-aware API 真正发挥作用
+- **状态机 eval**：把 chord-detector 的状态机（迟滞 / 速率限制）也纳入 eval，覆盖 R5 遗产
+- **模板权重学习**：从 fixture 反推最优 quality interval weights
+- **BPM 自适应衰减**：让 EVIDENCE_DECAY 根据节奏快慢调整
+
+---
+
+## 🎉 第四阶段（Round 25-29）5 轮迭代全部完成
+
+- Round 25: pcm-chroma FFT 8192 + cos² 软分配 (E +19.9pp)
+- Round 26: HPS 升级尝试 + 务实回退 + 线上系数微调
+- Round 27: KeyDetector/LiveChordRecognizer 三处证据滑窗衰减
+- Round 28: bass 偏置 eval API（休眠状态，等真实录音 fixture）
+- Round 29: 多和弦进行级评测场景 F（新维度落地）

@@ -1,7 +1,8 @@
 {
   "seed": 42,
-  "generatedAt": "2026-05-17T00:37:47.810Z",
+  "generatedAt": "2026-05-17T01:00:54.767Z",
   "templates": 156,
+  "progressions": 20,
   "scenarios": {
     "A": {
       "top1": 156,
@@ -37,6 +38,13 @@
       "top1Rate": 0.34615384615384615,
       "top3Rate": 0.9358974358974359,
       "avgBest": 0.9289157295934354
+    },
+    "F": {
+      "top1": 0,
+      "top3": 0,
+      "top1Rate": 0,
+      "top3Rate": 0,
+      "avgBest": 0
     }
   }
 }

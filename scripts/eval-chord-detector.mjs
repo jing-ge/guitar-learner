@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { synthChordChroma, voicingFor } from './lib/synth-chroma.mjs';
 import { synthPcm, pcmToChroma, pcmToChromaWithBass } from './lib/pcm-chroma.mjs';
 import { createPrng } from './lib/prng.mjs';
+import { evaluateProgression } from './lib/progression-eval.mjs';
 
 const args = process.argv.slice(2);
 const seedArg = args.indexOf('--seed');
@@ -208,7 +209,87 @@ const E = runEval('E. PCM → FFT → chroma 端到端（SNR 20dB）', tpl => {
 });
 
 console.log('\n=== 汇总 ===');
-const summary = { A, B, C, D, E };
+
+// Round 29: 经典 4-chord 走向（共 20 个）
+function chordByName(root, q, name) {
+  return { root, q, name };
+}
+
+// 12 调 I-V-vi-IV
+const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const I_V_vi_IV = [];
+for (let r = 0; r < 12; r++) {
+  I_V_vi_IV.push([
+    chordByName(r,            'maj', SHARP[r]),
+    chordByName((r + 7) % 12, 'maj', SHARP[(r+7)%12]),
+    chordByName((r + 9) % 12, 'min', SHARP[(r+9)%12] + 'm'),
+    chordByName((r + 5) % 12, 'maj', SHARP[(r+5)%12]),
+  ]);
+}
+
+// I-vi-IV-V × 3（C, G, A）
+const I_vi_IV_V = [
+  [chordByName(0,'maj','C'), chordByName(9,'min','Am'), chordByName(5,'maj','F'), chordByName(7,'maj','G')],
+  [chordByName(7,'maj','G'), chordByName(4,'min','Em'), chordByName(0,'maj','C'), chordByName(2,'maj','D')],
+  [chordByName(9,'maj','A'), chordByName(6,'min','F#m'), chordByName(2,'maj','D'), chordByName(4,'maj','E')],
+];
+
+// ii-V-I × 3（C, D, G 大调）
+const ii_V_I = [
+  [chordByName(2,'min','Dm'), chordByName(7,'maj','G'), chordByName(0,'maj','C')],
+  [chordByName(4,'min','Em'), chordByName(9,'maj','A'), chordByName(2,'maj','D')],
+  [chordByName(9,'min','Am'), chordByName(2,'maj','D'), chordByName(7,'maj','G')],
+];
+
+// vi-IV-I-V × 2
+const vi_IV_I_V = [
+  [chordByName(9,'min','Am'), chordByName(5,'maj','F'), chordByName(0,'maj','C'), chordByName(7,'maj','G')],
+  [chordByName(4,'min','Em'), chordByName(0,'maj','C'), chordByName(7,'maj','G'), chordByName(2,'maj','D')],
+];
+
+const PROGRESSIONS = [
+  ...I_V_vi_IV.map((p,i) => ({ name: `I-V-vi-IV (${SHARP[i]})`, chords: p })),
+  ...I_vi_IV_V.map((p,i) => ({ name: `I-vi-IV-V (${['C','G','A'][i]})`, chords: p })),
+  ...ii_V_I.map((p,i) => ({ name: `ii-V-I (${['C','D','G'][i]})`, chords: p })),
+  ...vi_IV_I_V.map((p,i) => ({ name: `vi-IV-I-V (${['C','G'][i]})`, chords: p })),
+];
+
+// 场景 F: 多和弦进行级评测
+const templatesF = buildTemplates();
+const matchFnF = chroma => matchTopK(chroma, templatesF, 3);
+
+let progFullHit = 0;
+let frameHit = 0;
+let frameTotal = 0;
+const progFails = [];
+
+for (const prog of PROGRESSIONS) {
+  const res = evaluateProgression(prog.chords, matchFnF, { snrDb: 20, rand });
+  progFullHit += res.progressionTop1;
+  frameHit += res.perChordTop1.reduce((a, b) => a + b, 0);
+  frameTotal += prog.chords.length;
+  if (res.progressionTop1 === 0) {
+    const detailStr = res.details.map(d => `${d.expected}${d.expected === d.predicted ? '✓' : '→'+d.predicted}`).join(' ');
+    progFails.push(`  ${prog.name}: ${detailStr}`);
+  }
+}
+
+const F = {
+  top1: progFullHit,
+  top3: progFullHit, // 进行级不算 top-3
+  avgBest: frameHit / frameTotal,  // 复用字段：avgBest 当作帧级命中率
+  avgSecondRatio: 0,
+};
+
+console.log(`\n=== F. 多和弦进行级（${PROGRESSIONS.length} 个走向, ${frameTotal} chord）===`);
+console.log(`进行级全对: ${progFullHit}/${PROGRESSIONS.length} (${(progFullHit/PROGRESSIONS.length*100).toFixed(1)}%)`);
+console.log(`帧级命中: ${frameHit}/${frameTotal} (${(frameHit/frameTotal*100).toFixed(1)}%)`);
+if (progFails.length) {
+  console.log(`失败 ${progFails.length}/${PROGRESSIONS.length}:`);
+  progFails.slice(0, 5).forEach(s => console.log(s));
+}
+
+const summary = { A, B, C, D, E, F };
 console.table(summary);
 
 const TOLERANCE = 0.03; // 3pp
@@ -218,14 +299,18 @@ if (UPDATE_BASELINE) {
     seed: SEED,
     generatedAt: new Date().toISOString(),
     templates: 156,
+    progressions: PROGRESSIONS.length,
     scenarios: Object.fromEntries(
-      Object.entries(summary).map(([k, v]) => [k, {
-        top1: v.top1,
-        top3: v.top3,
-        top1Rate: v.top1 / 156,
-        top3Rate: v.top3 / 156,
-        avgBest: v.avgBest,
-      }])
+      Object.entries(summary).map(([k, v]) => {
+        const denom = k === 'F' ? PROGRESSIONS.length : 156;
+        return [k, {
+          top1: v.top1,
+          top3: v.top3,
+          top1Rate: v.top1 / denom,
+          top3Rate: v.top3 / denom,
+          avgBest: v.avgBest,
+        }];
+      })
     ),
   };
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2));
@@ -247,7 +332,7 @@ if (CHECK_BASELINE) {
       console.log(`  [${name}] ⚠️ 未在 baseline 中`);
       continue;
     }
-    const curTop1Rate = v.top1 / 156;
+    const curTop1Rate = v.top1 / (name === 'F' ? PROGRESSIONS.length : 156);
     const diff = curTop1Rate - base.top1Rate;
     const pass = diff >= -TOLERANCE;
     const arrow = diff >= 0 ? `+${(diff * 100).toFixed(2)}pp` : `${(diff * 100).toFixed(2)}pp`;
