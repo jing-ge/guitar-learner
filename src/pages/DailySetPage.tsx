@@ -460,13 +460,13 @@ function EarStep({
             {total < QUIZ_QUESTIONS ? (
               <button className="btn btn-primary btn-sm" onClick={nextOne}>下一题 →</button>
             ) : (
-              <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>完成本步</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>完成本步</span>
             )}
           </div>
         </div>
       )}
 
-      <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: 'var(--text-dim)' }}>
+      <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>
         本步得分：<b>{right}</b> / {total}
       </div>
       <div className="daily-actions" style={{ marginTop: 12 }}>
@@ -603,7 +603,7 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
         第 3 步 · 和弦跟弹 · BPM {PLAY_BPM}
       </div>
       <h2>🎸 {progression.name}</h2>
-      <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)', marginTop: -4 }}>
+      <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', marginTop: -4 }}>
         走向：<b>{arrow}</b>，重复 2 轮
       </p>
       {bigMode ? (
@@ -644,7 +644,7 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
         </button>
         <button className="btn btn-ghost" onClick={onSkip}>完成本步</button>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', marginTop: 10 }}>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', marginTop: 10 }}>
         每个和弦持续 4 拍。听示范跟弹，或关掉示范自己练。
       </p>
     </section>
@@ -733,7 +733,7 @@ function DoneStep({
         <p className="daily-mistakes-empty">🌟 听音全对，今天耳朵在线！</p>
       )}
 
-      <p style={{ color: 'var(--text-dim)', fontSize: 13, textAlign: 'center', marginTop: 12 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', marginTop: 12 }}>
         练习数据已记录。坚持每天来一次，连续天数会更长 🔥
       </p>
       <div className="daily-actions">

@@ -146,12 +146,12 @@ export default function ScalesPage() {
           <div className="card">
             <h2>{pcToName(rootPc)} {scale.name}</h2>
             <p>{scale.desc}</p>
-            <div style={{ marginTop: 8 }}><b>组成音：</b><span style={{ color: 'var(--primary)', letterSpacing: 1 }}>{pcs.map(pc => pcToName(pc)).join(' - ')}</span></div>
-            <div style={{ marginTop: 4 }}><b>度数：</b><span style={{ color: 'var(--text-dim)' }}>{pcs.map(pc => semitonesToDegree(pc - rootPc)).join(' - ')}</span></div>
+            <div style={{ marginTop: 8 }}><b>组成音：</b><span style={{ color: 'var(--brand)', letterSpacing: 1 }}>{pcs.map(pc => pcToName(pc)).join(' - ')}</span></div>
+            <div style={{ marginTop: 4 }}><b>度数：</b><span style={{ color: 'var(--text-muted)' }}>{pcs.map(pc => semitonesToDegree(pc - rootPc)).join(' - ')}</span></div>
             <div className="btn-row" style={{ marginTop: 12, alignItems: 'center' }}>
               <button className="btn btn-primary btn-sm" onClick={() => playScale(true)}>▶ 上行</button>
               <button className="btn btn-sm" onClick={() => playScale(false)}>◀ 下行</button>
-              <span style={{ fontSize: 12, color: 'var(--text-dim)', marginLeft: 4 }}>速度</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>速度</span>
               {([['慢',400],['中',220],['快',120]] as [string,number][]).map(([l,v]) => (
                 <button key={l} className={'chip' + (scaleSpeed === v ? ' active' : '')} style={{ height: 28, fontSize: 12 }}
                   onClick={() => setScaleSpeed(v)}>{l}</button>
@@ -215,7 +215,7 @@ function EarTest({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number; sc
       </div>
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>得分：<b>{score.right}</b> / {score.total}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>选出你听到的音名</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>选出你听到的音名</div>
       </div>
       <div className="chip-row" style={{ marginTop: 8, justifyContent: 'center' }}>
         {pcs.map((pc, i) => {
@@ -299,8 +299,8 @@ function PlayTest({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number; s
   return (
     <>
       <div className="quiz-prompt">
-        请弹出：<span style={{ color: 'var(--primary)', fontSize: 28 }}>{pcToName(targetPc)}</span>
-        <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-dim)', marginTop: 4 }}>
+        请弹出：<span style={{ color: 'var(--brand)', fontSize: 28 }}>{pcToName(targetPc)}</span>
+        <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-muted)', marginTop: 4 }}>
           {pcToName(rootPc)} {scaleName} 中的音
         </div>
       </div>
@@ -321,10 +321,10 @@ function PlayTest({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number; s
             <>
               <div className="tuner-note">{detected.noteOnly}<span className="tuner-octave">{detected.noteName.replace(detected.noteOnly, '')}</span></div>
               <div className="tuner-freq">{detected.freq.toFixed(1)} Hz</div>
-              <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>稳定检测中…请保持弹奏</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>稳定检测中…请保持弹奏</div>
             </>
           ) : (
-            <div className="tuner-note" style={{ color: 'var(--text-dim)', fontSize: 16 }}>正在听…请弹一个音</div>
+            <div className="tuner-note" style={{ color: 'var(--text-muted)', fontSize: 16 }}>正在听…请弹一个音</div>
           )}
         </div>
       )}
@@ -412,11 +412,11 @@ function FollowAlong({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number
     <>
       <div className="quiz-prompt">
         {finished ? (
-          <span style={{ color: 'var(--green)' }}>通关！{pcToName(rootPc)} {scaleName} 完整上下行</span>
+          <span style={{ color: 'var(--success)' }}>通关！{pcToName(rootPc)} {scaleName} 完整上下行</span>
         ) : (
           <>
-            弹出：<span style={{ color: 'var(--primary)', fontSize: 28 }}>{pcToName(currentTarget)}</span>
-            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+            弹出：<span style={{ color: 'var(--brand)', fontSize: 28 }}>{pcToName(currentTarget)}</span>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
               {step + 1} / {fullSequence.length} · {step < pcs.length ? '上行' : '下行'}
             </div>
           </>
@@ -424,8 +424,8 @@ function FollowAlong({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number
       </div>
 
       {/* 进度条 */}
-      <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', margin: '0 0 12px', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${(step / fullSequence.length) * 100}%`, background: finished ? 'var(--green)' : 'var(--primary)', transition: 'width .2s' }} />
+      <div style={{ height: 6, borderRadius: 3, background: 'var(--line-soft)', margin: '0 0 12px', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${(step / fullSequence.length) * 100}%`, background: finished ? 'var(--success)' : 'var(--brand)', transition: 'width .2s' }} />
       </div>
 
       {/* 音阶音展示 */}
@@ -434,9 +434,9 @@ function FollowAlong({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number
           <span key={i} style={{
             display: 'inline-block', width: 28, height: 28, lineHeight: '28px', borderRadius: '50%',
             textAlign: 'center', fontSize: 11, fontWeight: 600,
-            background: i < step ? 'var(--green)' : i === step ? 'var(--primary)' : 'var(--bg-soft)',
-            color: i <= step ? '#fff' : 'var(--text-dim)',
-            border: i === step ? '2px solid #fff' : '1px solid var(--border)',
+            background: i < step ? 'var(--success)' : i === step ? 'var(--brand)' : 'var(--bg-soft)',
+            color: i <= step ? '#fff' : 'var(--text-muted)',
+            border: i === step ? '2px solid #fff' : '1px solid var(--line-soft)',
           }}>
             {pcToName(pc).charAt(0)}{pcToName(pc).includes('#') ? '#' : ''}
           </span>

@@ -207,11 +207,11 @@ function ChordSwitchDrill() {
   return (
     <>
       <div className="card" style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 4 }}>当前和弦</div>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 4 }}>当前和弦</div>
         {currentChord && (
           <>
             <ChordDiagram shape={currentChord.shapes[0]} size={200} title={currentChord.name} colorMode="dark" />
-            <div style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 4 }}>{currentChord.fullName}</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>{currentChord.fullName}</div>
           </>
         )}
         <div className="beat-dots" style={{ justifyContent: 'center', marginTop: 10 }}>
@@ -219,9 +219,9 @@ function ChordSwitchDrill() {
             <div key={i} className={'beat-dot' + (running && i === beatInChord ? ' on' : '')} />
           ))}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
           {chordList.map((c, i) => (
-            <span key={`${c.id}-${i}`} style={{ fontWeight: i === currentIdx % chordList.length ? 700 : 400, color: i === currentIdx % chordList.length ? 'var(--primary)' : 'inherit' }}>
+            <span key={`${c.id}-${i}`} style={{ fontWeight: i === currentIdx % chordList.length ? 700 : 400, color: i === currentIdx % chordList.length ? 'var(--brand)' : 'inherit' }}>
               {c.name}{i < chordList.length - 1 ? ' → ' : ''}
             </span>
           ))}
@@ -298,7 +298,7 @@ function ChordSwitchDrill() {
         <div className="field">
           <label className="field-label">BPM</label>
           <input type="range" min={40} max={160} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: '100%' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>{bpm} BPM</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{bpm} BPM</span>
         </div>
         <div className="field">
           <label className="field-label">每和弦拍数</label>
@@ -668,7 +668,7 @@ function ChordDetect() {
       {targetChord && (
         <div className="quiz-prompt">
           请弹出和弦：<span style={{ color: 'var(--brand-strong)', fontSize: 28 }}>{targetChord.name}</span>
-          <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-dim)', marginTop: 4 }}>{targetChord.fullName}</div>
+          <div style={{ fontSize: 13, fontWeight: 400, color: 'var(--text-muted)', marginTop: 4 }}>{targetChord.fullName}</div>
         </div>
       )}
 

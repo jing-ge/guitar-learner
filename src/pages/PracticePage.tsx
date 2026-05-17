@@ -145,7 +145,7 @@ function Metronome() {
   return (
     <div className="metronome">
       <div className="bpm-display">{bpm}</div>
-      <div style={{fontSize:12,color:'var(--text-dim)'}}>BPM</div>
+      <div style={{fontSize:12,color:'var(--text-muted)'}}>BPM</div>
       <input type="range" min={40} max={220} value={bpm} onChange={e=>setBpm(+e.target.value)} style={{width:'100%',maxWidth:320}} />
       <div className="bpm-row">
         <button className="btn btn-sm" onClick={()=>setBpm(b=>Math.max(40,b-5))}>−5</button>
@@ -154,7 +154,7 @@ function Metronome() {
         <button className="btn btn-sm" onClick={()=>setBpm(b=>Math.min(220,b+5))}>+5</button>
       </div>
       <div className="bpm-row">
-        <span style={{fontSize:13,color:'var(--text-dim)'}}>拍号：</span>
+        <span style={{fontSize:13,color:'var(--text-muted)'}}>拍号：</span>
         {[3,4,6,8].map(n=>(<button key={n} className={'chip'+(beats===n?' active':'')} onClick={()=>setBeats(n)}>{n}/4</button>))}
       </div>
       <div className="beat-dots">{Array.from({length:beats},(_,i)=>(<div key={i} className={'beat-dot'+(i===current?' on':'')} />))}</div>
@@ -276,8 +276,8 @@ function RhythmPatterns() {
         ))}
       </div>
       <div className="card" style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 8, color: 'var(--primary)', margin: '10px 0' }}>{p.pattern}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>{p.desc}</div>
+        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 8, color: 'var(--brand)', margin: '10px 0' }}>{p.pattern}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{p.desc}</div>
 
         {/* 节拍色块 + 高亮动画 */}
         <div className="chip-row" style={{ justifyContent: 'center', marginTop: 14, gap: 4 }}>
@@ -303,7 +303,7 @@ function RhythmPatterns() {
             );
           })}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8 }}>D=下扫 U=上扫 T=拇指低音 数字=弦号 ·=空拍</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>D=下扫 U=上扫 T=拇指低音 数字=弦号 ·=空拍</div>
 
         {/* 播放控制 */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 14 }}>
@@ -313,12 +313,12 @@ function RhythmPatterns() {
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10 }}>
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>BPM</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>BPM</span>
           <button className="btn btn-sm" onClick={() => setBpm(b => Math.max(40, b - 10))}>−10</button>
-          <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--primary)', minWidth: 40, textAlign: 'center' }}>{bpm}</span>
+          <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--brand)', minWidth: 40, textAlign: 'center' }}>{bpm}</span>
           <button className="btn btn-sm" onClick={() => setBpm(b => Math.min(180, b + 10))}>+10</button>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>用 C 和弦示范 · 先慢后快</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>用 C 和弦示范 · 先慢后快</div>
       </div>
       <div className="card"><p style={{ fontSize: 13 }}>💡 听示范掌握节奏感觉，然后关掉示范，跟着节拍器自己练。右手保持上下摆动（空拍时手不停），逐步加速。</p></div>
     </>
@@ -418,11 +418,11 @@ function SongChords() {
       {/* 大字演出模式 */}
       {bigMode ? (
         <div className="card" style={{ textAlign: 'center', padding: '24px 10px', minHeight: 180 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{song.title} · BPM {song.bpm}</div>
-          <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1, color: playing ? 'var(--primary)' : 'var(--text)', transition: 'color .15s' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{song.title} · BPM {song.bpm}</div>
+          <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1, color: playing ? 'var(--brand)' : 'var(--text-strong)', transition: 'color .15s' }}>
             {song.chords[currentIdx]}
           </div>
-          <div style={{ fontSize: 24, color: 'var(--text-dim)', marginTop: 8 }}>
+          <div style={{ fontSize: 24, color: 'var(--text-muted)', marginTop: 8 }}>
             下一个 → {nextChordName}
           </div>
           <div className="beat-dots" style={{ justifyContent: 'center', marginTop: 12 }}>
@@ -448,7 +448,7 @@ function SongChords() {
               );
             })}
           </div>
-          <div style={{fontSize:12,color:'var(--text-dim)',marginTop:6}}>BPM {song.bpm} · 每和弦 {song.beatsPerChord} 拍</div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginTop:6}}>BPM {song.bpm} · 每和弦 {song.beatsPerChord} 拍</div>
         </div>
       )}
 
@@ -510,7 +510,7 @@ function CAGEDSystem() {
       <div className="card">
         <h2>{pcToName(rootPc)} 大三和弦 — {shape.label}</h2>
         <p>{shape.desc}</p>
-        <p style={{fontSize:13,color:'var(--text-dim)'}}>🔴 根音({pcToName(rootPc)}) 🟡 三度({pcToName((rootPc+4)%12)}) 🔵 五度({pcToName((rootPc+7)%12)})</p>
+        <p style={{fontSize:13,color:'var(--text-muted)'}}>🔴 根音({pcToName(rootPc)}) 🟡 三度({pcToName((rootPc+4)%12)}) 🔵 五度({pcToName((rootPc+7)%12)})</p>
       </div>
       <div className="fretboard-wrap">
         <Fretboard fromFret={0} toFret={15} highlight={highlight} labelMode="degree" />
@@ -574,7 +574,7 @@ function ListeningQuiz() {
           <div style={{ marginTop: 8 }}><button className="btn btn-primary btn-sm" onClick={next}>下一题 →</button></div>
         </div>
       )}
-      <div style={{ marginTop: 8, textAlign: 'center', fontSize: 13, color: 'var(--text-dim)' }}>得分：<b>{score.right}</b> / {score.total}</div>
+      <div style={{ marginTop: 8, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>得分：<b>{score.right}</b> / {score.total}</div>
     </div>
   );
 }
@@ -589,30 +589,30 @@ function StatsView() {
         <h2>📊 今日练习</h2>
         <div style={{display:'flex',gap:20,justifyContent:'center',margin:'10px 0'}}>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:28,fontWeight:700,color:'var(--primary)'}}>{Math.floor(today.totalSeconds/60)}</div>
-            <div style={{fontSize:12,color:'var(--text-dim)'}}>分钟</div>
+            <div style={{fontSize:28,fontWeight:700,color:'var(--brand)'}}>{Math.floor(today.totalSeconds/60)}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)'}}>分钟</div>
           </div>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:28,fontWeight:700,color:'var(--green)'}}>{today.totalRight}</div>
-            <div style={{fontSize:12,color:'var(--text-dim)'}}>答对</div>
+            <div style={{fontSize:28,fontWeight:700,color:'var(--success)'}}>{today.totalRight}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)'}}>答对</div>
           </div>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:28,fontWeight:700,color:'var(--accent)'}}>{today.totalQuestions}</div>
-            <div style={{fontSize:12,color:'var(--text-dim)'}}>总题数</div>
+            <div style={{fontSize:28,fontWeight:700,color:'var(--accent-cyan)'}}>{today.totalQuestions}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)'}}>总题数</div>
           </div>
         </div>
       </div>
       <div className="section-title">最近 14 天</div>
       <div className="card">
-        {recent.length === 0 ? <p style={{textAlign:'center',color:'var(--text-dim)'}}>暂无记录，去练习吧！</p> : (
+        {recent.length === 0 ? <p style={{textAlign:'center',color:'var(--text-muted)'}}>暂无记录，去练习吧！</p> : (
           <div style={{display:'flex',alignItems:'flex-end',gap:4,height:80}}>
             {recent.map(r => {
               const mins = Math.round(r.totalSeconds / 60);
               const h = Math.max(4, Math.min(72, mins * 3));
               return (
                 <div key={r.date} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                  <div style={{width:'100%',height:h,borderRadius:3,background:'var(--primary)',minWidth:8}} title={`${r.date}: ${mins}分钟`} />
-                  <span style={{fontSize:8,color:'var(--text-dim)'}}>{r.date.slice(5)}</span>
+                  <div style={{width:'100%',height:h,borderRadius:3,background:'var(--brand)',minWidth:8}} title={`${r.date}: ${mins}分钟`} />
+                  <span style={{fontSize:8,color:'var(--text-muted)'}}>{r.date.slice(5)}</span>
                 </div>
               );
             })}
@@ -728,7 +728,7 @@ function FifthsQuiz() {
         ))}
       </div>
       
-      <div className="card" style={{ marginBottom: 16, background: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--primary)' }}>
+      <div className="card" style={{ marginBottom: 16, background: 'rgba(245, 158, 11, 0.1)', borderColor: 'var(--brand)' }}>
         <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>💡 想要看可视化的五度圈图表学习乐理？</span>
           <Link to="/circle" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>去看看 →</Link>
@@ -766,7 +766,7 @@ function FifthsQuiz() {
         <>
           <div className="card" style={{ textAlign: 'center' }}>
             <h2>⭕ 五度圈速答</h2>
-            <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
               按顺序点出五度圈上的 12 个大调：C → G → D → … → F → 回到 C
             </p>
             {!speedRunning && speedStep === 0 && (
@@ -774,13 +774,13 @@ function FifthsQuiz() {
             )}
             {!speedRunning && speedStep > 0 && (
               <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--green)' }}>{speedTimer}s</div>
-                <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>完成！你的用时</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--success)' }}>{speedTimer}s</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>完成！你的用时</div>
                 <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={startSpeed}>再来一轮</button>
               </div>
             )}
             {speedRunning && (
-              <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--primary)', marginTop: 4 }}>{speedTimer}s</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--brand)', marginTop: 4 }}>{speedTimer}s</div>
             )}
           </div>
 

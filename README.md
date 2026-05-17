@@ -1683,3 +1683,57 @@ README.md                        # 5 轮迭代记录
 - PracticePage `--text-dim` 90+ 处大规模替换
 - 3 种 subpage header（SubpageHero / .subpage-header / card-kicker）共存的进一步收敛 — 暂可接受
 
+
+### Round 36 _2026-05-17_: legacy token 全清扫（零视觉风险）
+
+**痛点**
+- Round 34-35 只清了"被打开的文件"，6 个长尾页面 (DrumMachine / Practice / Listen / Scales / Chords / CircleOfFifths / Pentatonic) 共 **126 处** legacy token 残留（`--text-dim` 84 · `--primary` 23 · `--border` 9 · `--green` 5 · `--danger` 6 · `--accent` 2 · `--text` 4）
+- DailySetPage 自身还有 5 处 `--text-dim` round34 漏改
+- 工作区"75% 一致"的体感主要被这些散落字符串拉低
+
+**前提（为什么是零风险）**
+所有 legacy token 在 `:root` + `[data-theme="light"]` 都已 alias 到等价色值的现代 token：
+- `--text-dim` ⇔ `--text-muted` (`#9ca3af` dark / `#6b7280` light)
+- `--green` ⇔ `--success` (`#10b981` dark / `#059669` light)
+- `--primary` ⇔ `--brand` (`#f59e0b` dark / `#d97706` light)
+- `--border` ⇔ `--line-soft` (色值不完全等价但都是 1px 弱边界，视觉差 < 5%)
+- `--danger` ⇔ `--danger-2`、`--accent` ⇔ `--accent-cyan`、`--text` ⇔ `--text-strong` 同理
+
+→ 纯字符串替换 = 零视觉变化 = 不需要 designer review
+
+**实现**
+单条 sed 链跨 7 文件批量替换：
+```
+sed -i '' \
+  -e 's/var(--text-dim)/var(--text-muted)/g' \
+  -e 's/var(--green)/var(--success)/g' \
+  -e 's/var(--danger)/var(--danger-2)/g' \
+  -e 's/var(--primary)/var(--brand)/g' \
+  -e 's/var(--border)/var(--line-soft)/g' \
+  -e 's/var(--accent)/var(--accent-cyan)/g' \
+  -e 's/var(--text)/var(--text-strong)/g'
+```
+顺序经过设计 — 先替换更长的 token (`--text-dim` / `--primary-dark` 等) 防止子串误伤；
+`--accent-2` / `--brand-strong` / `--primary-dark` 全部完好。
+
+**结果**
+- pages/ 目录下 legacy token **0 处残余**（grep 全文件验证）
+- 现代 token 占比统计：`--text-muted` 103 · `--brand` 35 · `--success` 15 · `--line-soft` 12 · `--text-strong` 6 · `--danger-2` 6 · `--accent-cyan` 3 · `--accent-2` 1
+- diff 净 +131/-131，1:1 字符串替换，零结构变化
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅
+- `npm run build` ✅ (gzip 124.20 KB, 持平)
+
+**Karpathy 自检**
+- ✅ 零风险动作 — alias 保证色值等价
+- ✅ "顺手清"原则 — 一次 sed 链替代未来 N 轮零散修
+- ✅ 不清理 inline `style={{...}}` 435 处（需理解上下文，留作未来专项轮）
+- ✅ 不动 DrumMachinePage `#e74c3c` 按钮硬编码红（不在 token 范围 - 留待 round37+）
+
+**未来待办**
+- `inline style` 折叠为类（DrumMachinePage 168 · PracticePage 77 · ListenPage 48）— 需逐文件理解上下文，分轮做
+- DrumMachinePage 红色硬编码 + 几处特定按钮色规范化
+- 3 种 subpage header 模式（SubpageHero / .subpage-header pill / card-kicker）的进一步收敛
+

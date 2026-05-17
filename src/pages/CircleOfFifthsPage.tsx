@@ -306,7 +306,7 @@ export default function CircleOfFifthsPage() {
               {MAJOR_NAMES[selectedIdx]} 大调 / {MINOR_NAMES[selectedIdx]}
             </h2>
             <p><b>调号：</b>{keySigText}</p>
-            <p><b>音阶组成：</b><span style={{ color: 'var(--primary)', letterSpacing: 1 }}>{scaleNotes.join(' - ')}</span></p>
+            <p><b>音阶组成：</b><span style={{ color: 'var(--brand)', letterSpacing: 1 }}>{scaleNotes.join(' - ')}</span></p>
             <p>
               <b>属调（V）：</b>{neighbors.dominant} &nbsp;|&nbsp;
               <b>下属调（IV）：</b>{neighbors.subdominant} &nbsp;|&nbsp;
@@ -319,7 +319,7 @@ export default function CircleOfFifthsPage() {
           <div className="chip-row">
             {diatonicChords.map(c => (
               <button key={c.degree} className="chip" onClick={() => playChordByName(c.name)} style={{ minWidth: 52 }}>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{c.degree}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{c.degree}</span>
                 &nbsp;{c.name}
               </button>
             ))}
@@ -329,11 +329,11 @@ export default function CircleOfFifthsPage() {
           <div className="section-title">常用和弦走向（五度圈规律）</div>
           <div className="card">
             <p>五度圈上<b>逆时针移动 = 属→主解决</b>（V→I），是流行/爵士最常见的进行：</p>
-            <p style={{ color: 'var(--primary)', fontSize: 15, fontWeight: 600, letterSpacing: 1.5 }}>
+            <p style={{ color: 'var(--brand)', fontSize: 15, fontWeight: 600, letterSpacing: 1.5 }}>
               {diatonicChords[1].name} → {diatonicChords[4].name} → {diatonicChords[0].name}
               &nbsp; (ii - V - I)
             </p>
-            <p style={{ color: 'var(--accent)', fontSize: 15, fontWeight: 600, letterSpacing: 1.5 }}>
+            <p style={{ color: 'var(--accent-cyan)', fontSize: 15, fontWeight: 600, letterSpacing: 1.5 }}>
               {diatonicChords[0].name} → {diatonicChords[4].name} → {diatonicChords[5].name} → {diatonicChords[3].name}
               &nbsp; (I - V - vi - IV)
             </p>

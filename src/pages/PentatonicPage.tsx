@@ -105,7 +105,7 @@ export default function PentatonicPage() {
   const pcColors = useMemo(() => {
     const m: Record<number, string> = {};
     Object.entries(pcToDegree).forEach(([pcStr, deg]) => {
-      m[+pcStr] = DEGREE_COLOR[deg] || 'var(--primary)';
+      m[+pcStr] = DEGREE_COLOR[deg] || 'var(--brand)';
     });
     return m;
   }, [pcToDegree]);
@@ -285,7 +285,7 @@ export default function PentatonicPage() {
           onClick={async () => { await synth.unlock(); setPlaying(p => !p); }}>
           {playing ? '■ 停止' : '▶ 上下行示范'}
         </button>
-        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-dim)' }}>从最低音上行 → 下行回到起点</div>
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>从最低音上行 → 下行回到起点</div>
       </div>
 
       {/* 学习要点 */}
@@ -295,7 +295,7 @@ export default function PentatonicPage() {
           反复来回弹这个 box，熟到能闭着眼弹。</p>
         <p><b>🎯 第二步</b>：用这个 box 在小调和弦背景下即兴。停在标红（根音 1）和绿色（5 度）上听感最稳。</p>
         <p><b>🎯 第三步</b>：学完 Box 1 再练 Box 2，注意两个 box 间的"连接音"——这是流畅 solo 的关键。</p>
-        <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>💡 大调五声 = 同根音的小调五声往左数 3 个半音。例如 C 大调五声 = A 小调五声同样 5 个音。</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>💡 大调五声 = 同根音的小调五声往左数 3 个半音。例如 C 大调五声 = A 小调五声同样 5 个音。</p>
       </div>
     </div>
   );

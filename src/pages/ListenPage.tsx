@@ -266,7 +266,7 @@ function LiveChordRecognizer() {
     if (state === 'confirmed' && activeConf >= 0.7) return 'B';
     return 'C';
   })();
-  const ratingColor = rating === 'A' ? 'var(--success)' : rating === 'B' ? 'var(--brand)' : 'var(--text-dim)';
+  const ratingColor = rating === 'A' ? 'var(--success)' : rating === 'B' ? 'var(--brand)' : 'var(--text-muted)';
 
   return (
     <>
@@ -299,7 +299,7 @@ function LiveChordRecognizer() {
               </span>
             </div>
             {(state === 'committed' || state === 'confirmed') && candidates.length > 1 && (
-              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
                 次选: {candidates
                   .filter(c => c.chord.id !== activeChord.id)
                   .slice(0, 2)
@@ -311,7 +311,7 @@ function LiveChordRecognizer() {
         ) : listening ? (
           <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
         ) : (
-          <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-dim)' }}>点击「开始监听」</div>
+          <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-muted)' }}>点击「开始监听」</div>
         )}
       </div>
 
@@ -328,7 +328,7 @@ function LiveChordRecognizer() {
                   <div key={i} className="history-item" style={{
                     display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
                     minWidth: 56, padding: '6px 8px', borderRadius: 8,
-                    background: 'var(--bg-soft)', border: '1px solid var(--border)',
+                    background: 'var(--bg-soft)', border: '1px solid var(--line-soft)',
                   }}>
                     <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--brand)', fontVariantNumeric: 'tabular-nums' }}>{h.name}</span>
                     <span className={'duration ' + durClass}>{sec.toFixed(1)}s</span>
@@ -337,11 +337,11 @@ function LiveChordRecognizer() {
               })}
             </div>
             {/* 走向文本摘要 */}
-            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, letterSpacing: 1, color: 'var(--text)' }}>
+            <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, letterSpacing: 1, color: 'var(--text-strong)' }}>
               {history.map(h => h.name).join(' → ')}
             </div>
             {inferredKey && (
-              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
                 推断调性: {inferredKey.name}（已反馈给识别器，提升后续调内和弦准确度）
               </div>
             )}
@@ -599,7 +599,7 @@ function KeyDetector() {
   const top2Score = keyScores[1]?.score || 0;
   const ratio = top2Score > 0 ? top1Score / top2Score : Infinity;
   const keyConfidenceRating = bestKey ? (ratio > 1.20 ? 'A' : ratio > 1.08 ? 'B' : 'C') : 'C';
-  const keyRatingColor = keyConfidenceRating === 'A' ? 'var(--success)' : keyConfidenceRating === 'B' ? 'var(--brand)' : 'var(--text-dim)';
+  const keyRatingColor = keyConfidenceRating === 'A' ? 'var(--success)' : keyConfidenceRating === 'B' ? 'var(--brand)' : 'var(--text-muted)';
 
   useEffect(() => { bestKeyRef.current = bestKey; }, [bestKey]);
 
@@ -630,7 +630,7 @@ function KeyDetector() {
         <button className={'btn ' + (listening ? '' : 'btn-primary')} style={{ width: 200 }} onClick={toggle}>
           {listening ? '■ 停止分析' : '🎤 开始听曲定调'}
         </button>
-        {listening && <div style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 6 }}>已分析 {elapsed} 秒 · 建议听 10-30 秒</div>}
+        {listening && <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6 }}>已分析 {elapsed} 秒 · 建议听 10-30 秒</div>}
       </div>
 
       {/* 调性判定结果 */}
@@ -651,7 +651,7 @@ function KeyDetector() {
         ) : listening ? (
           <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
         ) : (
-          <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-dim)' }}>播放音乐开始分析</div>
+          <div className="tuner-note" style={{ fontSize: 16, color: 'var(--text-muted)' }}>播放音乐开始分析</div>
         )}
       </div>
 
@@ -659,19 +659,19 @@ function KeyDetector() {
       {totalCounts > 5 && (
         <div className="card">
           <h2>候选调性</h2>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
             证据：chroma · 已识别 {chordEvidenceCount} 个和弦
           </div>
           {hintPushed && (
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
               已将该调反馈给和弦识别器（提升调内和弦识别度）
             </div>
           )}
           {top3.map((k, i) => (
             <div key={`${k.root}-${k.mode}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 14, fontWeight: i === 0 ? 700 : 400, color: i === 0 ? 'var(--success)' : 'var(--text)', minWidth: 90 }}>{k.name}</span>
+              <span style={{ fontSize: 14, fontWeight: i === 0 ? 700 : 400, color: i === 0 ? 'var(--success)' : 'var(--text-strong)', minWidth: 90 }}>{k.name}</span>
               <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--bg-soft)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(k.score / keyScores[0].score) * 100}%`, borderRadius: 4, background: i === 0 ? 'var(--success)' : 'var(--border)' }} />
+                <div style={{ height: '100%', width: `${(k.score / keyScores[0].score) * 100}%`, borderRadius: 4, background: i === 0 ? 'var(--success)' : 'var(--line-soft)' }} />
               </div>
             </div>
           ))}
@@ -689,7 +689,7 @@ function KeyDetector() {
               .map(([name, count]) => `${name} ×${Math.round(count)}`)
               .join(', ')}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
             已识别 {Math.round(Object.values(dominantChordCounts).reduce((a, b) => a + b, 0))} 个和弦
           </div>
         </div>
@@ -706,7 +706,7 @@ function KeyDetector() {
               return (
                 <div key={name} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                   <div style={{ width: '100%', height: h, borderRadius: 3, background: isBestRoot ? 'var(--success)' : 'var(--brand)', minWidth: 6, transition: 'height .3s' }} />
-                  <span style={{ fontSize: 9, color: isBestRoot ? 'var(--success)' : 'var(--text-dim)', fontWeight: isBestRoot ? 700 : 400 }}>{name}</span>
+                  <span style={{ fontSize: 9, color: isBestRoot ? 'var(--success)' : 'var(--text-muted)', fontWeight: isBestRoot ? 700 : 400 }}>{name}</span>
                 </div>
               );
             })}

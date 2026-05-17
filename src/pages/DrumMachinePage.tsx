@@ -168,11 +168,11 @@ function PatternGrid({ pattern, currentStep }: { pattern: DrumPattern; currentSt
       <div style={{ display: 'inline-block', minWidth: '100%' }}>
         {usedVoices.map(v => (
           <div key={v} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
-            <div style={{ width: 86, fontSize: 11, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 6 }}>{VOICE_LABEL[v]}</div>
+            <div style={{ width: 86, fontSize: 11, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 6 }}>{VOICE_LABEL[v]}</div>
             <div style={{ display: 'flex', gap: 2, flex: 1 }}>
               {pattern.grid.map((cell, i) => {
                 const on = cell.includes(v); const isCur = i === currentStep; const isBeat = i % stepsPerBeat === 0;
-                return <div key={i} style={{ flex: 1, minWidth: 14, height: 18, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? (isCur ? 1 : 0.85) : (isBeat ? 0.5 : 0.25), border: isCur ? '2px solid var(--brand)' : '1px solid var(--border)', boxShadow: isCur ? '0 0 0 2px rgba(245,158,11,0.45)' : 'none', transform: isCur && on ? 'scale(1.08)' : 'scale(1)', transition: 'transform 70ms var(--ease-out), box-shadow 70ms var(--ease-out)' }} />;
+                return <div key={i} style={{ flex: 1, minWidth: 14, height: 18, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? (isCur ? 1 : 0.85) : (isBeat ? 0.5 : 0.25), border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)', boxShadow: isCur ? '0 0 0 2px rgba(245,158,11,0.45)' : 'none', transform: isCur && on ? 'scale(1.08)' : 'scale(1)', transition: 'transform 70ms var(--ease-out), box-shadow 70ms var(--ease-out)' }} />;
               })}
             </div>
           </div>
@@ -368,8 +368,8 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
 
       {/* BPM 和播放按钮 */}
       <div style={{ background: 'var(--bg-soft)', borderRadius: 12, padding: 14, marginBottom: 12, textAlign: 'center' }}>
-        <div style={{ fontSize: 48, fontWeight: 800, color: 'var(--primary)' }}>{bpm}</div>
-        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>BPM</div>
+        <div style={{ fontSize: 48, fontWeight: 800, color: 'var(--brand)' }}>{bpm}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>BPM</div>
         <input type="range" min={40} max={220} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: '100%', maxWidth: 280, marginBottom: 10 }} />
         <button 
           style={{ 
@@ -378,7 +378,7 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
             padding: '12px 20px', 
             borderRadius: 10, 
             border: 'none', 
-            background: playing ? '#e74c3c' : 'var(--primary)', 
+            background: playing ? '#e74c3c' : 'var(--brand)', 
             color: '#fff', 
             fontSize: 15, 
             fontWeight: 700,
@@ -405,15 +405,15 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
                   <select value={sec.kind} onChange={e => updateSec(i, { kind: e.target.value as SectionKind })} style={{ flex: '0 0 76px', padding: 4, fontSize: 12, fontWeight: isCur ? 700 : 400, color: isCur ? secDef.color : undefined }} className="select">{(['intro','verse','chorus','bridge','outro'] as SectionKind[]).map(k => <option key={k} value={k}>{SECTION_DEFAULTS[k].label}</option>)}</select>
                   <select value={sec.patternId} onChange={e => updateSec(i, { patternId: e.target.value })} style={{ flex: 1, minWidth: 0, padding: 4, fontSize: 12 }} className="select">{allPatterns.map(p => <option key={p.id} value={p.id}>{(p as CustomDrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
                   <input type="number" min={1} max={16} value={sec.bars} onChange={e => updateSec(i, { bars: Math.max(1, Math.min(16, +e.target.value || 1)) })} style={{ width: 48, padding: 4, fontSize: 12, textAlign: 'center' }} className="select" />
-                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 2, color: 'var(--text-dim)' }}><input type="checkbox" checked={sec.fillLast} onChange={e => updateSec(i, { fillLast: e.target.checked })} />加花</label>
+                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 2, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.fillLast} onChange={e => updateSec(i, { fillLast: e.target.checked })} />加花</label>
                   <button className="btn btn-sm" onClick={() => moveSec(i, -1)} disabled={i === 0}>↑</button>
                   <button className="btn btn-sm" onClick={() => moveSec(i, 1)} disabled={i === song.length - 1}>↓</button>
-                  <button className="btn btn-sm" onClick={() => removeSec(i)} style={{ color: 'var(--danger)' }}>✕</button>
+                  <button className="btn btn-sm" onClick={() => removeSec(i)} style={{ color: 'var(--danger-2)' }}>✕</button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-dim)' }}><input type="checkbox" checked={sec.playDrum ?? true} onChange={e => updateSec(i, { playDrum: e.target.checked })} />🥁</label>
-                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-dim)' }}><input type="checkbox" checked={sec.playChord ?? false} onChange={e => updateSec(i, { playChord: e.target.checked })} />🎸</label>
-                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-dim)' }}><input type="checkbox" checked={sec.playBass ?? false} onChange={e => updateSec(i, { playBass: e.target.checked })} />🎸</label>
+                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playDrum ?? true} onChange={e => updateSec(i, { playDrum: e.target.checked })} />🥁</label>
+                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playChord ?? false} onChange={e => updateSec(i, { playChord: e.target.checked })} />🎸</label>
+                  <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playBass ?? false} onChange={e => updateSec(i, { playBass: e.target.checked })} />🎸</label>
                   <select value={sec.progressionId ?? ''} onChange={e => updateSec(i, { progressionId: e.target.value || undefined })} style={{ padding: 2, fontSize: 10, height: 26 }} className="select" title="和弦走向"><option value="">🎵 和弦走向</option>{allProgressions.map(p => <option key={p.id} value={p.id}>🎵 {(p as CustomChordProgression).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
                   <select value={sec.strumPatternId ?? 'whole'} onChange={e => updateSec(i, { strumPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: 3, fontSize: 11, height: 28 }} className="select" title="吉他节奏">{allStrums.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomChordStrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
                   <select value={sec.bassPatternId ?? 'root-only'} onChange={e => updateSec(i, { bassPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: 3, fontSize: 11, height: 28 }} className="select" title="贝斯节奏">{allBass.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomBassPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
@@ -489,10 +489,10 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>点击试听，长按克隆/应用</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，长按克隆/应用</span></div>
         {presetCategories.map(([cat, list]) => (
           <div key={cat} style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontWeight: 600 }}>{cat}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>{cat}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {list.map(p => (
                 <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -511,13 +511,13 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
             </div>
           </div>
         ))}
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
       </div>
 
       {/* 我的自定义 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>📝 我的鼓机节奏</div>
-        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
+        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
         <div className="chip-row">{customs.map(c => <button key={c.id} className={'chip' + (editingId === c.id ? ' active' : '')} onClick={() => setEditingId(c.id)}>{c.name}</button>)}</div>
         <div className="chip-row" style={{ marginTop: 8 }}>
           <button className="chip" onClick={() => addNew(16)}>+ 新建 16步</button>
@@ -530,7 +530,7 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <input type="text" value={editing.name} onChange={e => updateEditing({ name: e.target.value })} placeholder="输入名称" style={{ flex: 1, fontWeight: 700, fontSize: 14 }} className="select" />
-            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger)' }}>删除</button>
+            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger-2)' }}>删除</button>
           </div>
 
           {/* 试听控制 */}
@@ -538,20 +538,20 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
             <button className={'btn btn-sm ' + (playing ? '' : 'btn-primary')} onClick={async () => { await drum.unlock(); setPlaying(p => !p); }}>
               {playing ? '■ 停止' : '▶ 试听'}
             </button>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>BPM</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BPM</span>
             <input type="range" min={60} max={180} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: 80 }} />
             <span style={{ fontSize: 12, fontWeight: 600, minWidth: 32 }}>{bpm}</span>
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>{editing.steps} 步 · 点击格子切换鼓件</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{editing.steps} 步 · 点击格子切换鼓件</div>
           {ALL_VOICES.map(v => (
             <div key={v} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
-              <div style={{ width: 80, fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 4 }}>{VOICE_LABEL[v]}</div>
+              <div style={{ width: 80, fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 4 }}>{VOICE_LABEL[v]}</div>
               <div style={{ display: 'flex', gap: 2, flex: 1 }}>
                 {editing.grid.map((cell, i) => {
                   const on = cell.includes(v);
                   const isCur = i === currentStep;
-                  return <button key={i} style={{ flex: 1, minWidth: 16, height: 22, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? 0.9 : 0.3, border: isCur ? '2px solid var(--primary)' : '1px solid var(--border)', cursor: 'pointer', padding: 0, transform: isCur ? 'scale(1.1)' : 'scale(1)', transition: 'all 0.05s' }} onClick={() => { const newGrid = editing.grid.map((c, idx) => idx === i ? (c.includes(v) ? c.filter(x => x !== v) : [...c, v]) : c); updateEditing({ grid: newGrid }); }} />;
+                  return <button key={i} style={{ flex: 1, minWidth: 16, height: 22, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? 0.9 : 0.3, border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)', cursor: 'pointer', padding: 0, transform: isCur ? 'scale(1.1)' : 'scale(1)', transition: 'all 0.05s' }} onClick={() => { const newGrid = editing.grid.map((c, idx) => idx === i ? (c.includes(v) ? c.filter(x => x !== v) : [...c, v]) : c); updateEditing({ grid: newGrid }); }} />;
                 })}
               </div>
             </div>
@@ -611,7 +611,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {CHORD_PROGRESSIONS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -631,13 +631,13 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
       </div>
 
       {/* 我的自定义 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>📝 我的和弦走向</div>
-        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
+        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
         <div className="chip-row">{customs.map(c => <button key={c.id} className={'chip' + (editingId === c.id ? ' active' : '')} onClick={() => setEditingId(c.id)}>{c.name}</button>)}</div>
         <div className="chip-row" style={{ marginTop: 8 }}><button className="chip" onClick={addNew}>+ 新建</button></div>
       </div>
@@ -647,7 +647,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <input type="text" value={editing.name} onChange={e => updateEditing({ name: e.target.value })} placeholder="输入名称" style={{ flex: 1, fontWeight: 700, fontSize: 14 }} className="select" />
-            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger)' }}>删除</button>
+            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger-2)' }}>删除</button>
           </div>
 
           {/* 试听控制 */}
@@ -655,18 +655,18 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
             <button className={'btn btn-sm ' + (playing ? '' : 'btn-primary')} onClick={async () => { await synth.unlock(); setPlaying(p => !p); }}>
               {playing ? '■ 停止' : '▶ 试听'}
             </button>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>BPM</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BPM</span>
             <input type="range" min={60} max={140} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: 80 }} />
             <span style={{ fontSize: 12, fontWeight: 600, minWidth: 32 }}>{bpm}</span>
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>点击选择和弦，支持拖拽排序</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>点击选择和弦，支持拖拽排序</div>
           
           {/* 和弦类型分组选择器 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
             {/* 基础和弦：大三、小三 */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-dim)', width: 60 }}>大三/小三:</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>大三/小三:</span>
               {['C','D','E','F','G','A','B'].map(root => (
                 <div key={root} style={{ display: 'flex', gap: 2 }}>
                   <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px', minWidth: 26 }} onClick={() => updateEditing({ chords: [...editing.chords, root] })}>{root}</button>
@@ -676,14 +676,14 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
             </div>
             {/* 七和弦 */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-dim)', width: 60 }}>七和弦:</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>七和弦:</span>
               {['C7','D7','E7','F7','G7','A7','B7','Am7','Dm7','Em7','Cmaj7','Gmaj7','Amaj7','Dmaj7','Fmaj7'].map(ch => (
                 <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
               ))}
             </div>
             {/* 挂留、减、增和弦 */}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-dim)', width: 60 }}>挂留/减/增:</span>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>挂留/减/增:</span>
               {['Dsus2','Dsus4','Asus2','Asus4','Esus4','Csus2','Csus4','Gsus4','Adim','Bdim','Caug','Aaug'].map(ch => (
                 <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
               ))}
@@ -692,26 +692,26 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
           
           {/* 当前和弦序列 */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '10px 8px', background: 'var(--bg-soft)', borderRadius: 6, minHeight: 50 }}>
-            {editing.chords.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>点击上方添加和弦...</div>}
+            {editing.chords.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>点击上方添加和弦...</div>}
             {editing.chords.map((ch, i) => {
               const chordDef = CHORDS.find(c => c.id === ch);
               return (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', background: curIdx === i ? 'var(--primary)' : 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', background: curIdx === i ? 'var(--brand)' : 'var(--bg)', borderRadius: 6, border: '1px solid var(--line-soft)', cursor: 'pointer', transition: 'all 0.15s' }}
                   onClick={() => {
                     const chordList = CHORDS.filter(c => c.id.startsWith(ch[0]));
                     const next = chordList[(chordList.findIndex(c => c.id === ch) + 1) % chordList.length]?.id ?? ch;
                     const c = [...editing.chords]; c[i] = next; updateEditing({ chords: c });
                   }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: curIdx === i ? '#fff' : 'var(--text)' }}>{chordDisplayName(ch)}</div>
-                  <div style={{ fontSize: 9, color: curIdx === i ? 'rgba(255,255,255,0.7)' : 'var(--text-dim)' }}>{chordDef?.category ?? ''}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: curIdx === i ? '#fff' : 'var(--text-strong)' }}>{chordDisplayName(ch)}</div>
+                  <div style={{ fontSize: 9, color: curIdx === i ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>{chordDef?.category ?? ''}</div>
                   {editing.chords.length > 1 && (
-                    <button style={{ fontSize: 9, color: 'var(--danger)', marginTop: 2, background: 'none', border: 'none', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); updateEditing({ chords: editing.chords.filter((_, j) => j !== i) }); }}>✕</button>
+                    <button style={{ fontSize: 9, color: 'var(--danger-2)', marginTop: 2, background: 'none', border: 'none', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); updateEditing({ chords: editing.chords.filter((_, j) => j !== i) }); }}>✕</button>
                   )}
                 </div>
               );
             })}
           </div>
-          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--primary)', fontWeight: 600, textAlign: 'center' }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--brand)', fontWeight: 600, textAlign: 'center' }}>
             {editing.chords.length > 0 && `预览：${editing.chords.map(chordDisplayName).join(' → ')}`}
           </div>
         </div>
@@ -797,7 +797,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {CHORD_STRUM_PATTERNS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -814,13 +814,13 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
       </div>
 
       {/* 我的自定义 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>📝 我的吉他节奏</div>
-        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
+        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
         <div className="chip-row">{customs.map(c => <button key={c.id} className={'chip' + (editingId === c.id ? ' active' : '')} onClick={() => setEditingId(c.id)}>{c.name}</button>)}</div>
         <div className="chip-row" style={{ marginTop: 8 }}>
           <button className="chip" onClick={() => addNew(4)}>+ 新建 4/4</button>
@@ -833,7 +833,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <input type="text" value={editing.name} onChange={e => updateEditing({ name: e.target.value })} placeholder="输入名称" style={{ flex: 1, fontWeight: 700, fontSize: 14 }} className="select" />
-            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger)' }}>删除</button>
+            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger-2)' }}>删除</button>
           </div>
 
           {/* 试听控制 */}
@@ -852,13 +852,13 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
                 {CHORDS.filter(c => c.quality === 'sus' || c.quality === 'dim' || c.quality === 'aug').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </optgroup>
             </select>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>BPM</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BPM</span>
             <input type="range" min={60} max={140} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: 80 }} />
             <span style={{ fontSize: 12, fontWeight: 600, minWidth: 32 }}>{bpm}</span>
           </div>
 
           {/* 笔刷说明 */}
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
             点击格子切换：D下扫全 U上扫高 d下扫低 u上扫轻 B根音 X切音 ·留空
           </div>
           
@@ -870,7 +870,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
             
             return (
               <div key={strumType} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
-                <div style={{ width: 80, fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 4 }}>{STRUM_LABEL[strumType]}</div>
+                <div style={{ width: 80, fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 4 }}>{STRUM_LABEL[strumType]}</div>
                 <div style={{ display: 'flex', gap: 2, flex: 1 }}>
                   {Array.from({ length: totalSteps }, (_, stepIdx) => {
                     const beatPos = stepIdx / 4; // 转换为拍位
@@ -884,7 +884,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
                         flex: 1, minWidth: 16, height: 22, borderRadius: 3,
                         background: isOn ? STRUM_COLOR[strumType] : 'var(--bg-soft)',
                         opacity: isOn ? (isCur ? 1 : 0.9) : (isBeat ? 0.5 : 0.3),
-                        border: isCur ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)',
                         cursor: 'pointer', padding: 0,
                         transform: isCur && isOn ? 'scale(1.1)' : 'scale(1)',
                         transition: 'all 0.05s'
@@ -905,10 +905,10 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
           })}
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-            <div style={{ width: 80, fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 4 }}>拍位</div>
+            <div style={{ width: 80, fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 4 }}>拍位</div>
             <div style={{ display: 'flex', gap: 2, flex: 1 }}>
               {Array.from({ length: editing.beatsPerBar }, (_, beatIdx) => (
-                <div key={beatIdx} style={{ flex: 4, textAlign: 'center', fontSize: 10, color: 'var(--text-dim)' }}>{beatIdx + 1}</div>
+                <div key={beatIdx} style={{ flex: 4, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>{beatIdx + 1}</div>
               ))}
             </div>
           </div>
@@ -996,7 +996,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-dim)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {BASS_PATTERNS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -1010,13 +1010,13 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>💡 点击试听 · 右键克隆 · {editing && '选中后双击应用'}</div>
       </div>
 
       {/* 我的自定义 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>📝 我的贝斯节奏</div>
-        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
+        {customs.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>暂无自定义，从上方预设「克隆」或点击下方新建</div>}
         <div className="chip-row">{customs.map(c => <button key={c.id} className={'chip' + (editingId === c.id ? ' active' : '')} onClick={() => setEditingId(c.id)}>{c.name}</button>)}</div>
         <div className="chip-row" style={{ marginTop: 8 }}>
           <button className="chip" onClick={() => addNew(4)}>+ 新建 4/4</button>
@@ -1029,7 +1029,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <input type="text" value={editing.name} onChange={e => updateEditing({ name: e.target.value })} placeholder="输入名称" style={{ flex: 1, fontWeight: 700, fontSize: 14 }} className="select" />
-            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger)' }}>删除</button>
+            <button className="btn btn-sm" onClick={() => remove(editing.id)} style={{ color: 'var(--danger-2)' }}>删除</button>
           </div>
 
           {/* 试听控制 */}
@@ -1048,13 +1048,13 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
                 {CHORDS.filter(c => c.quality === 'sus' || c.quality === 'dim' || c.quality === 'aug').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </optgroup>
             </select>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>BPM</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>BPM</span>
             <input type="range" min={60} max={140} value={bpm} onChange={e => setBpm(+e.target.value)} style={{ width: 80 }} />
             <span style={{ fontSize: 12, fontWeight: 600, minWidth: 32 }}>{bpm}</span>
           </div>
 
           {/* 音符说明 */}
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
             点击格子切换：R根音 5五度 3三度 O高八度 L低八度 X休止
           </div>
           
@@ -1066,7 +1066,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
             
             return (
               <div key={noteType} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
-                <div style={{ width: 80, fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 4 }}>{NOTE_LABEL_FULL[noteType]}</div>
+                <div style={{ width: 80, fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 4 }}>{NOTE_LABEL_FULL[noteType]}</div>
                 <div style={{ display: 'flex', gap: 2, flex: 1 }}>
                   {Array.from({ length: totalSteps }, (_, stepIdx) => {
                     const beatPos = stepIdx / 4; // 转换为拍位
@@ -1080,7 +1080,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
                         flex: 1, minWidth: 16, height: 22, borderRadius: 3,
                         background: isOn ? NOTE_COLOR[noteType] : 'var(--bg-soft)',
                         opacity: isOn ? (isCur ? 1 : 0.9) : (isBeat ? 0.5 : 0.3),
-                        border: isCur ? '2px solid var(--primary)' : '1px solid var(--border)',
+                        border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)',
                         cursor: 'pointer', padding: 0,
                         transform: isCur && isOn ? 'scale(1.1)' : 'scale(1)',
                         transition: 'all 0.05s'
@@ -1101,10 +1101,10 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
           })}
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-            <div style={{ width: 80, fontSize: 10, color: 'var(--text-dim)', textAlign: 'right', paddingRight: 4 }}>拍位</div>
+            <div style={{ width: 80, fontSize: 10, color: 'var(--text-muted)', textAlign: 'right', paddingRight: 4 }}>拍位</div>
             <div style={{ display: 'flex', gap: 2, flex: 1 }}>
               {Array.from({ length: editing.beatsPerBar }, (_, beatIdx) => (
-                <div key={beatIdx} style={{ flex: 4, textAlign: 'center', fontSize: 10, color: 'var(--text-dim)' }}>{beatIdx + 1}</div>
+                <div key={beatIdx} style={{ flex: 4, textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>{beatIdx + 1}</div>
               ))}
             </div>
           </div>
