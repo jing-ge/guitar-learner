@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import LearnHub from './pages/LearnHub';
 import PracticeHub from './pages/PracticeHub';
 import PlayHub from './pages/PlayHub';
+import DailySetPage from './pages/DailySetPage';
 import ProgressToast from './components/ProgressToast';
 
 // 底部 4 大主区导航
@@ -55,6 +56,7 @@ export default function App() {
           <Route path="/home" element={<HomePage />} />
           <Route path="/learn" element={<LearnHub />} />
           <Route path="/practice" element={<PracticeHub />} />
+          <Route path="/practice/daily" element={<DailySetPage />} />
           <Route path="/play" element={<PlayHub />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>

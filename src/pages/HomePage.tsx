@@ -203,9 +203,14 @@ function HomePageInner() {
         </div>
 
         <div className="hero-actions">
-          <button className="btn btn-primary hero-btn" onClick={() => navigate('/practice')}>
+          <button className="btn btn-primary hero-btn" onClick={() => navigate('/practice/daily')}>
+            ▶ 每日 5 分钟
+          </button>
+          <button className="btn btn-ghost hero-btn" onClick={() => navigate('/practice')}>
             {primaryAction.label}
           </button>
+        </div>
+        <div className="hero-actions hero-actions-secondary">
           <button
             className="btn btn-ghost hero-btn"
             onClick={() => navigate('/practice?start=newbie')}

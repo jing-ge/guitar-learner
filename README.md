@@ -1443,3 +1443,54 @@ README.md                        # 5 轮迭代记录
 - Round 27: KeyDetector/LiveChordRecognizer 三处证据滑窗衰减
 - Round 28: bass 偏置 eval API（休眠状态，等真实录音 fixture）
 - Round 29: 多和弦进行级评测场景 F（新维度落地）
+
+---
+
+## 🚀 第五阶段：练习闭环（Round 30-）
+
+> 算法 4 阶段做到 baseline 全绿后，重心转向**产品体验**：把"工具集"打磨成"每天都想打开 5 分钟"的学习应用。
+
+### Round 30 _2026-05-17_: 每日 5 分钟练习套餐
+
+**痛点（PM）**
+- HomePage 已有"今日推荐任务"，但**只是一句话文本**，没有可执行的具体步骤
+- PracticePage 有 7 个独立训练，每个都是孤立的，没有串成一次完整练习
+- 用户路径："开始今天练习" → 进 PracticeHub → 进综合训练 → 看到 7 个卡片 → 选一个 → 练完没下文 → 决策疲劳
+
+**核心缺口**：没有"一次坐下来 5 分钟完成一次有结构练习"的容器。
+
+**PRD（最小可行）**
+新增 **"每日练习套餐"** 串行流（3 步 Stepper）：
+1. **热身（1 分钟）：调音检查** — 今日未调音引导去调音器；已调音一键继续
+2. **乐理（2 分钟）：听音辨认 5 题** — 答完自动进下一步
+3. **手感（2 分钟）：C-Am-F-G 跟弹 × 2 轮** — 大字模式 + Web Audio lookahead scheduler
+
+完成后写入 `recordSession('daily-set', completedSteps, 3, totalSeconds)`，与现有进度系统打通。
+
+**实现（Dev）**
+- 新文件 `src/pages/DailySetPage.tsx`（~440 行，5 个内部 step 子组件）
+- 新路由 `/practice/daily`，挂在 `App.tsx`
+- HomePage hero 区主按钮改为「▶ 每日 5 分钟」，「我是新手」降为次级按钮
+- CSS 追加 `.daily-*` 一族 token（progress stepper / big chord display / done stats）
+- **复用底层原语**而非 export 子组件：`synth.strum/playFret/click` + `recordSession` + `CHORDS` — 不动 PracticePage 任何一行
+- PlayStep 复用 Metronome 同款 lookahead scheduler 模式（`scheduleAheadTime=0.15` / `lookahead=25.0`）
+
+**测试 & Oracle Review**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅ (A/B/C/D/E/F 全部 baseline 内)
+- `npm run build` ✅ (gzip 122.62 KB，与 round29 持平 +0.02KB)
+- Oracle review 发现并修复：
+  - **Blocker #1**：PlayStep `useEffect` 依赖含 `onDone` 回调，父组件重渲染会重启调度器 → 改用 `onDoneRef`
+  - **Should-fix #5**：`finalize` 的 10 秒门槛会吃掉快速完成的用户记录 → 改为 `completed || secs >= 10`
+  - **Nit #9**：最后一个和弦时"下一个"显示"完成"而非循环回 C
+
+**用户路径变化**
+- 旧：HomePage → /practice → 综合训练 → 选一个 → 自己决定何时停
+- 新：HomePage → /practice/daily → 3 步串行 → 完成页（用时 + 听音正确率） → 数据自动入账
+
+**架构决策（Karpathy 自检）**
+- ✅ 不做难度分级 / 个性化推荐算法（YAGNI）
+- ✅ 不做"周计划" / "成就徽章"（琐碎功能）
+- ✅ 复用而非重构 — 0 改动现有 PracticePage / Metronome
+- ✅ 测试范围 = 编译 + 算法回归 + 人工 review，不引入 e2e 框架
+
