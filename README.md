@@ -1304,3 +1304,42 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - ⚠️ 无 eval 覆盖（同 Round 26）属盲改，但风险低于 chord-detector 改动
 
 **结论**：长曲转调场景下，调性判定会跟随实时和弦走向自适应，而非锁死在前段。下一轮（Round 28）回到 eval 可覆盖范围：bass 强约束破 sus2/sus4 + aug 歧义。
+
+### Round 28 _____: 引入 bass 偏置到 eval — 暴露 voicing/bass 窗对齐问题（回退）
+
+**痛点（PM）**
+- Round 25 E top-3=93.6% / top-1=34.6%，差距 60pp 全在同音异名歧义（Cm7↔D#6 / sus2↔sus4 / aug 转位）
+- 线上 chord-detector 用 bass chroma 70-220Hz + BASS_BIAS=0.5 破解
+- eval 路径完全无 bass 概念，评测被低估
+
+**实现（Dev）**
+- `pcm-chroma.mjs` 新增 `pcmToChromaWithBass(pcm, sr) → {chroma, bassChroma}`（70-220Hz 单独累加）
+- `eval-chord-detector.mjs` 新增 `matchTopKWithBass(chroma, bassChroma, templates, k)`：root 维度乘 `(1 + 0.5·bassChroma[root])`
+- runEval 增加 `{chroma, bassChroma}` 输入分支
+- 场景 E 切换到 bass 版
+
+**实测：E 从 34.6% 跌到 18.6%（-16pp）❌**
+
+**根因（fixer 诊断）**
+- `voicingFor` 把和弦 root 放在 MIDI 48-59（130-247Hz 区间）
+- BASS_FREQ_MAX = 220Hz：A4(220Hz) 以上的高根音基频**超出** bass 窗
+- 但低根音的 3rd / 5th（如 C 的 E=165Hz、Cm 的 D#=156Hz、Cm7 的 G=196Hz）落在 bass 窗内
+- 结果：bass 偏置把"以 3rd 为根"的对手模板（Em / D#6 / Gm 等）的分数拉高 → 选错根音
+- 合成器无吉他真实低音弦能量优势，"bass = 根音"假设破坏
+
+**典型误判**：C→Em, Cm→D#6, C7→Edim, Cm7→Gm, Caug→G#aug
+
+**决策（karpathy goal-driven）**
+- E 严重回归 → 立刻回退场景 E 改回 `pcmToChroma`
+- 但**保留**新增 API（`pcmToChromaWithBass` / `matchTopKWithBass` / runEval 分支）：合成 voicing 不适合，但未来真实录音 fixture 立刻可用
+- Round 29 会引入和弦序列评测，离真实更近一步
+
+**测试（QA）**
+- ✅ `npm run build` 通过
+- ✅ `npm run eval:check` 全 PASS（E 回到 34.6%）
+- ✅ 备用 API 完整保留（karpathy 第 3 条：不删既有死代码）
+- ⚠️ 本轮量化收益为 0
+- ⚠️ 第二次"想让 eval 更接近线上 → 反而暴露评测和线上的根本差异"（Round 26 / 28 同模式）
+- 📌 共同教训：合成评测物理假设（白噪声/fixed voicing/简化谐波）≠ 线上真机；eval 是逼近真实的工具，不能当作线上真理
+
+**结论**：本轮失败但价值在留下了真实录音 fixture 的 API 接口 + 一份诚实的失败诊断。下一轮（Round 29）做和弦走向多帧评测，从单帧准确率走向序列准确率（更接近真实使用场景）。

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { synthChordChroma, voicingFor } from './lib/synth-chroma.mjs';
-import { synthPcm, pcmToChroma } from './lib/pcm-chroma.mjs';
+import { synthPcm, pcmToChroma, pcmToChromaWithBass } from './lib/pcm-chroma.mjs';
 import { createPrng } from './lib/prng.mjs';
 
 const args = process.argv.slice(2);
@@ -104,6 +104,26 @@ function matchTopK(chroma, templates, k = 3) {
   return scores.slice(0, k);
 }
 
+const EVAL_BASS_BIAS = 0.5;
+
+// 带 bass 偏置的模板匹配（对齐线上 chord-detector.ts BASS_BIAS）
+function matchTopKWithBass(chroma, bassChroma, templates, k = 3) {
+  const chromaN = l2(chroma);
+  if (chromaN < 1e-9) return [];
+  const scores = templates.map(t => {
+    let dot = 0, tplSq = 0;
+    for (let i = 0; i < 12; i++) {
+      const biased = i === t.root ? t.vec[i] * (1 + EVAL_BASS_BIAS * bassChroma[i]) : t.vec[i];
+      dot += chroma[i] * biased;
+      tplSq += biased * biased;
+    }
+    const sim = dot / (chromaN * Math.sqrt(tplSq));
+    return { name: t.name, root: t.root, q: t.q, score: sim };
+  });
+  scores.sort((a, b) => b.score - a.score);
+  return scores.slice(0, k);
+}
+
 // 噪声/泛音注入
 function injectNoise(chroma, root, noiseAmp = 0.2, fifthHarmonic = 0.5) {
   const noisy = chroma.slice();
@@ -126,7 +146,12 @@ function runEval(label, makeInput) {
 
   for (const tpl of templates) {
     const input = makeInput(tpl);
-    const results = matchTopK(input, templates, 3);
+    let results;
+    if (input && typeof input === 'object' && !Array.isArray(input) && input.chroma && input.bassChroma) {
+      results = matchTopKWithBass(input.chroma, input.bassChroma, templates, 3);
+    } else {
+      results = matchTopK(input, templates, 3);
+    }
     if (!results.length) { fails.push(`${tpl.name}: no match`); continue; }
     if (results[0].name === tpl.name) top1++;
     if (results.some(r => r.name === tpl.name)) top3++;

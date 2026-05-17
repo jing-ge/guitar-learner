@@ -100,3 +100,63 @@ export function pcmToChroma(pcm, sampleRate = DEFAULT_SAMPLE_RATE) {
   if (max > 1e-9) for (let i = 0; i < 12; i++) chroma[i] /= max;
   return chroma;
 }
+
+const BASS_FREQ_MAX = 220;  // 70-220Hz 与 chord-detector.ts CHROMA_BASS_FREQ 对齐
+
+/**
+ * 同时返回完整 chroma 和 bass-only chroma（70-220Hz）
+ * @returns {{ chroma: number[], bassChroma: number[] }}
+ */
+export function pcmToChromaWithBass(pcm, sampleRate = DEFAULT_SAMPLE_RATE) {
+  const N = pcm.length;
+  const fftOut = fftRealToComplex(pcm);
+  const mag = magnitudeSpectrum(fftOut);
+
+  const binSize = sampleRate / N;
+  const minBin = Math.max(1, Math.floor(70 / binSize));
+  const maxBin = Math.min(mag.length - 1, Math.ceil(2000 / binSize));
+
+  const chromaRaw = new Array(12).fill(0);
+  const bassRaw = new Array(12).fill(0);
+
+  for (let i = minBin; i <= maxBin; i++) {
+    const freq = (i + 0.5) * binSize;
+    if (freq <= 0) continue;
+    const m = 12 * Math.log2(freq / 440) + 69;
+    const pcLowFloat = Math.floor(m);
+    const pcHighFloat = pcLowFloat + 1;
+    const pcLow = ((pcLowFloat % 12) + 12) % 12;
+    const pcHigh = ((pcHighFloat % 12) + 12) % 12;
+    const frac = m - pcLowFloat;
+    const halfPi = Math.PI / 2;
+    const wLow = Math.cos(frac * halfPi) ** 2;
+    const wHigh = Math.sin(frac * halfPi) ** 2;
+    const e = mag[i];
+    chromaRaw[pcLow] += e * wLow;
+    chromaRaw[pcHigh] += e * wHigh;
+    if (freq < BASS_FREQ_MAX) {
+      bassRaw[pcLow] += e * wLow;
+      bassRaw[pcHigh] += e * wHigh;
+    }
+  }
+
+  // chroma HPS 减法（与现有 pcmToChroma 同公式）
+  const chroma = new Array(12);
+  for (let pc = 0; pc < 12; pc++) {
+    chroma[pc] = Math.max(0, chromaRaw[pc] - 0.33 * chromaRaw[(pc + 7) % 12] - 0.20 * chromaRaw[(pc + 4) % 12]);
+  }
+
+  // bassChroma 不做 HPS（保留低频根音原貌）
+  const bassChroma = bassRaw.slice();
+
+  // 各自归一化
+  let cMax = 0;
+  for (let i = 0; i < 12; i++) if (chroma[i] > cMax) cMax = chroma[i];
+  if (cMax > 1e-9) for (let i = 0; i < 12; i++) chroma[i] /= cMax;
+
+  let bMax = 0;
+  for (let i = 0; i < 12; i++) if (bassChroma[i] > bMax) bMax = bassChroma[i];
+  if (bMax > 1e-9) for (let i = 0; i < 12; i++) bassChroma[i] /= bMax;
+
+  return { chroma, bassChroma };
+}
