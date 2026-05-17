@@ -9,6 +9,8 @@ import MicPermissionState, { type MicPermState } from '../components/MicPermissi
 
 type Tab = 'chords' | 'key';
 
+const EVIDENCE_DECAY = 0.95;  // 每次 justCommitted 前的衰减因子，半衰期 ~13 chord
+
 /** 探测麦克风权限 */
 async function probeMic(): Promise<'granted' | 'denied' | 'error'> {
   try {
@@ -178,7 +180,8 @@ function LiveChordRecognizer() {
         // Round 22: 累积和弦根音直方图 → K-S 推断调性 → 反馈给识别器
         const rootPc = parseRootPc(ev.chord.id);
         if (rootPc >= 0) {
-          chordRootHistogramRef.current[rootPc]++;
+          for (let i = 0; i < 12; i++) chordRootHistogramRef.current[i] *= EVIDENCE_DECAY;
+          chordRootHistogramRef.current[rootPc] += 1;
           totalChordsRef.current++;
 
           if (totalChordsRef.current >= 5) {
@@ -502,13 +505,18 @@ function KeyDetector() {
       // justCommitted 不受节流影响，独立累积和弦证据
       if (event.justCommitted) {
         const { chord } = event.justCommitted;
-        setDominantChordCounts(prev => ({
-          ...prev,
-          [chord.name]: (prev[chord.name] || 0) + 1,
-        }));
+        setDominantChordCounts(prev => {
+          const decayed: Record<string, number> = {};
+          for (const k in prev) decayed[k] = prev[k] * EVIDENCE_DECAY;
+          decayed[chord.name] = (decayed[chord.name] || 0) + 1;
+          return decayed;
+        });
         const rootPc = parseRootPc(chord.id);
         if (rootPc >= 0) {
-          setChordEvidence(prev => addChordEvidence(prev, rootPc, chord.quality));
+          setChordEvidence(prev => {
+            const decayed = prev.map(v => v * EVIDENCE_DECAY);
+            return addChordEvidence(decayed, rootPc, chord.quality);
+          });
           setChordEvidenceCount(c => c + 1);
         }
       }
@@ -678,11 +686,11 @@ function KeyDetector() {
             {Object.entries(dominantChordCounts)
               .sort((a, b) => b[1] - a[1])
               .slice(0, 3)
-              .map(([name, count]) => `${name} ×${count}`)
+              .map(([name, count]) => `${name} ×${Math.round(count)}`)
               .join(', ')}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-            已识别 {Object.values(dominantChordCounts).reduce((a, b) => a + b, 0)} 个和弦
+            已识别 {Math.round(Object.values(dominantChordCounts).reduce((a, b) => a + b, 0))} 个和弦
           </div>
         </div>
       )}

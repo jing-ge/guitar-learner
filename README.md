@@ -1276,3 +1276,31 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - ⚠️ 弱奏场景可能根音被过抑制，状态机阈值 0.5 后置过滤兜底
 
 **结论**：Round 26 主要价值是**失败教训**——同时改两端 + 引入新算法 + 未隔离变量 = 容易引入回归。下次大改动应单独验证每个变量。下一轮（Round 27）回到 eval 可验证的范围：chordEvidence / dominantChordCounts 滑窗衰减。
+
+### Round 27 QA: chordEvidence / dominantCounts 滑窗衰减（破长曲转调污染）
+
+**痛点（PM）**
+- Round 13/20/22 累加的三个数组全部无衰减
+- 长曲转调（前奏 C / 副歌 G）→ 早期 20 chord 持续污染后期判定
+- key 判定锁死在前段，副歌切调后识别不灵活
+
+**实现（Dev）**
+- ListenPage.tsx 文件级常量：`EVIDENCE_DECAY = 0.95`（半衰期 ln(0.5)/ln(0.95) ≈ 13 chord）
+- 三处衰减（每次 justCommitted 前先衰减再 +1）：
+  - KeyDetector `chordEvidence: number[24]` → `prev.map(v => v * 0.95)` 后再 add
+  - KeyDetector `dominantChordCounts: Record<string, number>` → for k 全衰减后 +1
+  - LiveChordRecognizer `chordRootHistogramRef: number[12]` → 12 个 bin 全衰减后 +1
+- UI 显示用 `Math.round(count)` 避免浮点乱码
+- **`totalChordsRef` 保持整数累加**（语义是 ≥5 chord 触发门槛，不应被衰减污染）
+- chord-detector.ts / eval / 其他文件零改动
+
+**测试（QA）**
+- ✅ `npm run build` 通过
+- ✅ `npm run eval:check` 全 PASS（eval 不走 ListenPage）
+- ✅ 三处衰减点都用 EVIDENCE_DECAY 常量
+- ✅ UI Math.round 应用到 2 处（chip 显示 + 累计计数）
+- ✅ totalChordsRef 未衰减
+- ⚠️ γ=0.95 半衰期 ~13 chord 是经验值，快/慢歌可能需要差异化
+- ⚠️ 无 eval 覆盖（同 Round 26）属盲改，但风险低于 chord-detector 改动
+
+**结论**：长曲转调场景下，调性判定会跟随实时和弦走向自适应，而非锁死在前段。下一轮（Round 28）回到 eval 可覆盖范围：bass 强约束破 sus2/sus4 + aug 歧义。
