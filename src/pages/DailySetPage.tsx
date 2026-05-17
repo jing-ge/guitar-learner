@@ -27,7 +27,24 @@ interface EarMistake {
 const QUIZ_QUESTIONS = 5;
 const PLAY_BPM = 80;
 const PLAY_BEATS_PER_CHORD = 4;
-const PLAY_CHORDS = ['C', 'Am', 'F', 'G', 'C', 'Am', 'F', 'G'];
+
+/** 跟弹走向池（round32）：每次进入随机选一个 */
+interface ProgressionDef {
+  id: string;
+  name: string;          // 显示用名
+  /** 一轮走向（4 个和弦），DailySetPage 会自动重复 2 轮 */
+  chords: string[];
+}
+const PROGRESSIONS: ProgressionDef[] = [
+  { id: '1-6-4-5',  name: '50 年代经典 (C-Am-F-G)', chords: ['C', 'Am', 'F', 'G'] },
+  { id: '1-5-6-4',  name: '万能流行 (C-G-Am-F)',    chords: ['C', 'G', 'Am', 'F'] },
+  { id: '6-4-1-5',  name: '感伤进行 (Am-F-C-G)',    chords: ['Am', 'F', 'C', 'G'] },
+  { id: 'g-d-em-c', name: '清新民谣 (G-D-Em-C)',    chords: ['G', 'D', 'Em', 'C'] },
+];
+
+function pickProgression(): ProgressionDef {
+  return PROGRESSIONS[Math.floor(Math.random() * PROGRESSIONS.length)];
+}
 
 function isTunedToday(): boolean {
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -44,13 +61,22 @@ export default function DailySetPage() {
   const [mistakes, setMistakes] = useState<EarMistake[]>([]);
   const startRef = useRef<number>(Date.now());
   const completedStepsRef = useRef<number>(0);
+  // 防止 finalize 在卸载兜底 + 显式完成时双记录
+  const recordedRef = useRef<boolean>(false);
 
   // 完成 / 退出时统一记录
   const finalize = (completed: boolean) => {
+    if (recordedRef.current) {
+      // 已经记过 → 仅切视图
+      if (completed) setStep('done');
+      else navigate(-1);
+      return;
+    }
     const secs = Math.round((Date.now() - startRef.current) / 1000);
     // 用户明确完成 → 总是记录；否则至少练了 10 秒才记录（避免误触）
     if (completed || secs >= 10) {
       recordSession('daily-set', completedStepsRef.current, 3, secs);
+      recordedRef.current = true;
     }
     if (completed) {
       setStep('done');
@@ -58,6 +84,20 @@ export default function DailySetPage() {
       navigate(-1);
     }
   };
+
+  // 兜底：组件卸载时（用户切底部 nav 跳走、关 PWA 等），若有进度但没完成，
+  // 写一条记录，避免数据丢失。
+  useEffect(() => {
+    return () => {
+      if (recordedRef.current) return;
+      if (completedStepsRef.current === 0) return; // 还在 intro/warmup 起点，不记录
+      const secs = Math.round((Date.now() - startRef.current) / 1000);
+      if (secs >= 10) {
+        recordSession('daily-set', completedStepsRef.current, 3, secs);
+        recordedRef.current = true;
+      }
+    };
+  }, []);
 
   // 步骤推进
   const goToWarmup = () => {
@@ -114,6 +154,7 @@ export default function DailySetPage() {
           onAgain={() => {
             startRef.current = Date.now();
             completedStepsRef.current = 0;
+            recordedRef.current = false;
             setEarRight(0);
             setEarTotal(0);
             setMistakes([]);
@@ -309,6 +350,11 @@ function EarStep({
 
 /* ============ Step 3: 和弦跟弹 ============ */
 function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }) {
+  // 每次挂载时随机一个走向（重 mount 时刷新）
+  const [progression, setProgression] = useState<ProgressionDef>(() => pickProgression());
+  // 实际播放序列 = 走向 × 2 轮
+  const sequence = useMemo(() => [...progression.chords, ...progression.chords], [progression]);
+
   const [playing, setPlaying] = useState(false);
   const [chordIdx, setChordIdx] = useState(0);
   const [beat, setBeat] = useState(0);
@@ -325,6 +371,10 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
   const onDoneRef = useRef(onDone);
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
+  // 走向变化时也要把 sequence 暴露给调度器（用 ref 持有最新值）
+  const sequenceRef = useRef(sequence);
+  useEffect(() => { sequenceRef.current = sequence; }, [sequence]);
+
   useEffect(() => {
     if (!playing) {
       if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -338,8 +388,11 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
       beatRef.current = 0;
       uiQueueRef.current = [];
       doneFiredRef.current = false;
+      setChordIdx(0);
+      setBeat(0);
 
-      const totalBeats = PLAY_CHORDS.length * PLAY_BEATS_PER_CHORD;
+      const seq = sequenceRef.current;
+      const totalBeats = seq.length * PLAY_BEATS_PER_CHORD;
       const interval = 60.0 / PLAY_BPM;
       const scheduleAheadTime = 0.15;
       const lookahead = 25.0;
@@ -361,7 +414,7 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
           const cIdx = Math.floor(b / PLAY_BEATS_PER_CHORD);
           const posInChord = b % PLAY_BEATS_PER_CHORD;
           if (posInChord === 0) {
-            const ch = CHORDS.find(x => x.id === PLAY_CHORDS[cIdx]);
+            const ch = CHORDS.find(x => x.id === seq[cIdx]);
             if (ch) synth.strum(chordPlayablePositions(ch.shapes[0]), { when: nextNoteRef.current });
           } else {
             synth.click(false, nextNoteRef.current);
@@ -400,15 +453,31 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
     };
   }, [playing]);
 
-  const current = PLAY_CHORDS[chordIdx];
-  const next = chordIdx + 1 < PLAY_CHORDS.length ? PLAY_CHORDS[chordIdx + 1] : '完成';
+  // 用户点"换一个走向"按钮：未播放时直接换；播放中先停
+  const shuffle = () => {
+    setPlaying(false);
+    let next = progression;
+    while (next.id === progression.id) {
+      next = pickProgression();
+    }
+    setProgression(next);
+    setChordIdx(0);
+    setBeat(0);
+  };
+
+  const current = sequence[chordIdx];
+  const next = chordIdx + 1 < sequence.length ? sequence[chordIdx + 1] : '完成';
+  const arrow = progression.chords.join(' → ');
 
   return (
     <section className="card daily-step-card">
       <div className="card-kicker">
         第 3 步 · 和弦跟弹 · BPM {PLAY_BPM}
       </div>
-      <h2>🎸 跟弹 C → Am → F → G</h2>
+      <h2>🎸 {progression.name}</h2>
+      <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-dim)', marginTop: -4 }}>
+        走向：<b>{arrow}</b>，重复 2 轮
+      </p>
       {bigMode ? (
         <div className="daily-bigchord">
           <div className="daily-bigchord-now">{current}</div>
@@ -421,7 +490,7 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
         </div>
       ) : (
         <div className="chip-row" style={{ justifyContent: 'center', marginTop: 8 }}>
-          {PLAY_CHORDS.map((id, i) => (
+          {sequence.map((id, i) => (
             <span key={i} className="chip" style={{
               minWidth: 56,
               background: i === chordIdx && playing ? 'var(--primary)' : 'var(--bg-soft)',
@@ -442,10 +511,13 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
         <button className="btn btn-ghost" onClick={() => setBigMode(b => !b)}>
           {bigMode ? '📋 列表' : '🔤 大字'}
         </button>
+        <button className="btn btn-ghost" onClick={shuffle} aria-label="换一个走向">
+          🎲 换走向
+        </button>
         <button className="btn btn-ghost" onClick={onSkip}>完成本步</button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--text-dim)', textAlign: 'center', marginTop: 10 }}>
-        每个和弦持续 4 拍，共 8 个和弦。听示范跟弹，或关掉示范自己练。
+        每个和弦持续 4 拍。听示范跟弹，或关掉示范自己练。
       </p>
     </section>
   );

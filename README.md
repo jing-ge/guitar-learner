@@ -1530,3 +1530,38 @@ README.md                        # 5 轮迭代记录
 - ✅ 不做"昨日完成"、"本周完成"展示（YAGNI）
 - ✅ `mistakes` 用 React state 而非 ref — 因为 DoneStep 需要响应式渲染
 
+
+### Round 32 _2026-05-17_: 跟弹走向轮换池 + 中途退出兜底记录
+
+**痛点（PM）**
+- Round 30 跟弹固定 C-Am-F-G 一种走向 → **第 N 次打开就腻**
+- 用户练到一半切底部 nav 跳走 → DailySetPage 卸载时**不触发任何 finalize**，数据完全丢失
+
+**PRD（两件小事）**
+1. **走向轮换池**：4 个经典 4 和弦走向（50 年代经典 / 万能流行 / 感伤进行 / 清新民谣），每次进入 PlayStep 随机一个；新增「🎲 换走向」按钮即时切换
+2. **中途退出兜底**：DailySetPage 卸载时若已有进度（`completedStepsRef.current > 0`）且练了 ≥ 10 秒，自动写一条 daily-set 记录（用 `recordedRef` 防止与显式 `finalize` 重复记录）
+
+**实现（Dev）**
+- `PROGRESSIONS` 常量 + `pickProgression()` 工具函数
+- PlayStep 内部 `progression` state + `sequence` useMemo（走向 × 2 轮）
+- Scheduler 用 `sequenceRef` 持有最新序列，避免闭包陷阱
+- 父组件 `recordedRef` + 卸载 useEffect cleanup
+- `start()` 现重置 `setBeat(0)` 防止重启时旧节拍点闪烁（oracle review #1）
+
+**Oracle Review**
+- StrictMode 双挂载：cleanup 中 `completedStepsRef.current === 0` 守卫成立，安全 ✓
+- sequenceRef 竞争：`shuffle()` 同步 `setPlaying(false)`，下次渲染时 play effect cleanup 先于 sequenceRef 更新跑，调度器已死，无竞争 ✓
+- 底部 nav 卸载：refs 进入 cleanup 闭包，`recordSession` 同步 localStorage 写入，安全 ✓
+- **Should-fix #1**：`start()`/`shuffle()` 未重置 `beat` → 重启时旧节拍点闪烁 150ms → 已修
+- **Nit #5**：移除冗余的 `PROGRESSIONS.length > 1` 守卫（Karpathy YAGNI）
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅
+- `npm run build` ✅ (gzip 123.62 KB, +0.4KB)
+
+**Karpathy 自检**
+- ✅ 4 个走向不是 40 个 — 收益递减点选低位
+- ✅ 走向名带括号显示原始和弦（用户读得懂"卡农走向 (G-D-Em-C)"）
+- ✅ 兜底卸载记录只在已经开始练习时触发（intro 阶段不动）
+
