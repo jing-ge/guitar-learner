@@ -454,7 +454,7 @@ export class ChordDetector {
 
     // 步骤 B: HPS 轻量抑制——减去完全五度 1/3 + 大三度 0.20（Round 11：抑制大三泛音）
     const chroma = chromaRaw.map((v, pc) =>
-      Math.max(0, v - (chromaRaw[(pc + 7) % 12] * 0.33 + chromaRaw[(pc + 4) % 12] * 0.20))
+      Math.max(0, v - (chromaRaw[(pc + 7) % 12] * 0.40 + chromaRaw[(pc + 4) % 12] * 0.25))
     );
 
     // 步骤 B+: EMA 平滑（Round 12）

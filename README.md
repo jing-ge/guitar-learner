@@ -1240,3 +1240,39 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - ⚠️ 剩余瓶颈下移到模板/匹配层，下一轮（Round 26）从 HPS 升级 + 模板优化入手
 
 **结论**：基础特征精度问题基本解决，top-3 = 93.6% 已经接近 D 场景；后续 4 轮把焦点切到模板歧义破解。
+
+### Round 26 _____: HPS 升级尝试 + 务实回退 + 线上系数微调
+
+**痛点（PM）**
+- Round 25 后 E top-1=34.6%，top-3=93.6% — chroma 大体对，但 top-1 被泛音串扰拖累
+- 当前线上 HPS 是"减法版"，力度有限
+- 真 HPS 是"乘积版"：基频在所有阶都有能量，泛音只在自身阶有
+
+**实现（Dev）第一次尝试**
+- 同时改 `pcm-chroma.mjs`（spectrum 域 3 阶 HPS 乘积 + chroma 域减法降到 0.15/0.10）
+- 同步 `chord-detector.ts` HPS 系数 0.33→0.40, 0.20→0.25
+
+**实测：E 从 34.6% 降到 33.3%（-1.28pp）❌**
+
+**根因分析**
+1. **3 阶乘积放大噪声**：mag^3 让噪声 floor 也被立方放大，`+1e-9` epsilon 在 mag 典型 >>1 尺度下无保护
+2. **chroma 域减法系数同步压低**（0.15/0.10），弱化了原有泛音抑制
+3. 两弱叠加 → 信号没更清晰，抑制反而更弱
+
+**回退决策（按 Karpathy Goal-Driven Execution）**
+- 任务可验证目标"E +5-10pp"未达成 → 立刻回退 pcm-chroma.mjs（恢复 Round 25 状态）
+- baseline 未更新
+
+**线上侧温和改动（保留）**
+- `src/audio/chord-detector.ts` HPS 系数：0.33→0.40, 0.20→0.25（单点改动）
+- eval 不覆盖 chord-detector，数字保持不变（A=100/B=83.3/C=30.8/D=74.4/E=34.6 全 PASS）
+- 线上浏览器端 HPS 抑制更激进，理论上更鲁棒，但**需真机麦克风验证，本轮接受盲改**
+
+**测试（QA）**
+- ✅ `npm run build` 通过
+- ✅ `npm run eval:check` 全 PASS（eval 数字未变）
+- ✅ 仅 chord-detector.ts 改两个数字
+- ⚠️ 线上改动无 eval 覆盖，属"盲改"，靠系数温和（+0.07/+0.05）控制风险
+- ⚠️ 弱奏场景可能根音被过抑制，状态机阈值 0.5 后置过滤兜底
+
+**结论**：Round 26 主要价值是**失败教训**——同时改两端 + 引入新算法 + 未隔离变量 = 容易引入回归。下次大改动应单独验证每个变量。下一轮（Round 27）回到 eval 可验证的范围：chordEvidence / dominantChordCounts 滑窗衰减。
