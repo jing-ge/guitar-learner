@@ -1494,3 +1494,39 @@ README.md                        # 5 轮迭代记录
 - ✅ 复用而非重构 — 0 改动现有 PracticePage / Metronome
 - ✅ 测试范围 = 编译 + 算法回归 + 人工 review，不引入 e2e 框架
 
+
+### Round 31 _2026-05-17_: 完成态反馈闭环
+
+**痛点（PM）**
+- Round 30 上线后，daily-set 完成回首页**看不到刚才做了什么** → 激励中断
+- 听音 5 题做完，**错题信息有但用户感知不到** → 学习闭环不完整
+- "再来一次"按钮文案只在套餐完成页才有 → 二次进入路径不直观
+
+**PRD（外科手术，不动数据结构）**
+1. HomePage hero 下方新增「✓ 今日套餐已完成 × N」状态卡（仅在今日完成≥1 次时出现），展示用时 + 跳过步数 + 「再练」按钮
+2. Hero 主按钮文案随状态切换：未完成 = "▶ 每日 5 分钟"，已完成 = "🔁 再来一次套餐"
+3. 完成页 `DoneStep` 新增「📌 听音错题回顾」区块，列出每道错题的 (正确答案, 你选的)，点正确答案 chip 可重听一遍；全对则显示鼓励文案
+
+**实现（Dev）**
+- `progress.ts` 新增 `getDailySetTodaySummary()` 查询函数（向后兼容，不动 schema）
+- `DailySetPage.tsx`：
+  - 父组件 `mistakes: EarMistake[]` state 收集错题
+  - `EarStep.onAnswer` 签名扩展为 `(correct, target, chosen) => void`
+  - `DoneStep` 新增 `mistakes` prop + 错题展示区块（带重听按钮）
+- `HomePage.tsx`：
+  - import `getDailySetTodaySummary`
+  - hero 主按钮文案动态切换
+  - 新增 `.daily-done-banner` 区块
+- CSS 追加 `.daily-done-banner`/`.daily-mistakes*` 一族 token（绿色调，明暗主题适配）
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅ (A/B/C/D/E/F 全 baseline 内)
+- `npm run build` ✅ (gzip 123.24 KB, +0.6KB)
+
+**Karpathy 自检**
+- ✅ 不改 progress.ts 数据结构（向后兼容）
+- ✅ 不引入新依赖、新颜色 token、新组件库
+- ✅ 不做"昨日完成"、"本周完成"展示（YAGNI）
+- ✅ `mistakes` 用 React state 而非 ref — 因为 DoneStep 需要响应式渲染
+

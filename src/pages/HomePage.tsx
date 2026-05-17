@@ -1,6 +1,6 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Component, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopMistakes, loadAll } from '../utils/progress';
+import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopMistakes, loadAll, getDailySetTodaySummary } from '../utils/progress';
 import { loadSavedProgressions, type SavedProgression } from '../utils/saved-progressions';
 import { CHORDS } from '../theory/chords';
 import ChordDiagram from '../components/ChordDiagram';
@@ -158,6 +158,7 @@ function HomePageInner() {
     return list[0] || null;
   }, []);
   const topMistakes = useMemo(() => getTopMistakes(3), []);
+  const dailySet = useMemo(() => getDailySetTodaySummary(), []);
   const primaryAction = getPrimaryAction(summary);
   const greeting = getGreeting(summary);
   const fullyTunedToday = useMemo(() => {
@@ -204,7 +205,7 @@ function HomePageInner() {
 
         <div className="hero-actions">
           <button className="btn btn-primary hero-btn" onClick={() => navigate('/practice/daily')}>
-            ▶ 每日 5 分钟
+            {dailySet.completedCount > 0 ? '🔁 再来一次套餐' : '▶ 每日 5 分钟'}
           </button>
           <button className="btn btn-ghost hero-btn" onClick={() => navigate('/practice')}>
             {primaryAction.label}
@@ -223,6 +224,20 @@ function HomePageInner() {
           <div className="hero-inline-tip">已为你打开新手路径入口，去练习中心从调音器开始。</div>
         )}
       </section>
+
+      {dailySet.completedCount > 0 && (
+        <section className="daily-done-banner" aria-label="今日套餐完成">
+          <div className="ddb-icon" aria-hidden="true">✓</div>
+          <div className="ddb-body">
+            <div className="ddb-title">今日套餐已完成 × {dailySet.completedCount}</div>
+            <div className="ddb-sub">
+              最近一次 {Math.floor(dailySet.lastSeconds / 60)}:{String(dailySet.lastSeconds % 60).padStart(2, '0')}
+              {dailySet.lastScore < 3 && ` · 跳过了 ${3 - dailySet.lastScore} 步`}
+            </div>
+          </div>
+          <button className="btn btn-sm" onClick={() => navigate('/practice/daily')}>再练</button>
+        </section>
+      )}
 
       <section className="recommend-card">
         <div className="card-kicker">今日推荐任务</div>

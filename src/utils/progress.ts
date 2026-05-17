@@ -132,6 +132,30 @@ export function getTodayStats(): { totalSeconds: number; totalRight: number; tot
   return { totalSeconds: rec.totalSeconds, totalRight, totalQuestions };
 }
 
+/** 获取今日 daily-set 套餐完成汇总（round31） */
+export interface DailySetTodaySummary {
+  completedCount: number;     // 今日成功完成（completedSteps === 3）的次数
+  attemptedCount: number;     // 今日尝试次数（含未完成）
+  lastSeconds: number;        // 最近一次的用时
+  lastScore: number;          // 最近一次的完成步数（0~3）
+  bestEar: { right: number; total: number } | null;  // 暂未实装，预留
+}
+export function getDailySetTodaySummary(): DailySetTodaySummary {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const rec = loadAll().find(r => r.date === todayStr);
+  const sessions = Array.isArray(rec?.sessions) ? rec.sessions : [];
+  const dsSessions = sessions.filter(s => s.module === 'daily-set');
+  const completed = dsSessions.filter(s => (Number(s.score) || 0) >= 3);
+  const last = dsSessions[dsSessions.length - 1];
+  return {
+    completedCount: completed.length,
+    attemptedCount: dsSessions.length,
+    lastSeconds: last ? Number(last.seconds) || 0 : 0,
+    lastScore: last ? Number(last.score) || 0 : 0,
+    bestEar: null,
+  };
+}
+
 export function getPracticeSummary(): ProgressSummary {
   const all = loadAll();
   const todayDate = today();

@@ -19,6 +19,11 @@ import { vibrate, vibratePattern } from '../utils/haptic';
 
 type Step = 'intro' | 'warmup' | 'ear' | 'play' | 'done';
 
+interface EarMistake {
+  target: number;   // 正确答案 pc
+  chosen: number;   // 用户选的 pc
+}
+
 const QUIZ_QUESTIONS = 5;
 const PLAY_BPM = 80;
 const PLAY_BEATS_PER_CHORD = 4;
@@ -36,6 +41,7 @@ export default function DailySetPage() {
   const [step, setStep] = useState<Step>('intro');
   const [earRight, setEarRight] = useState(0);
   const [earTotal, setEarTotal] = useState(0);
+  const [mistakes, setMistakes] = useState<EarMistake[]>([]);
   const startRef = useRef<number>(Date.now());
   const completedStepsRef = useRef<number>(0);
 
@@ -87,9 +93,10 @@ export default function DailySetPage() {
         <EarStep
           right={earRight}
           total={earTotal}
-          onAnswer={(correct) => {
+          onAnswer={(correct, target, chosen) => {
             setEarTotal(t => t + 1);
             if (correct) setEarRight(r => r + 1);
+            else setMistakes(prev => [...prev, { target, chosen }]);
           }}
           onDone={finishEar}
           onSkip={finishEar}
@@ -102,12 +109,14 @@ export default function DailySetPage() {
         <DoneStep
           earRight={earRight}
           earTotal={earTotal}
+          mistakes={mistakes}
           totalSeconds={Math.round((Date.now() - startRef.current) / 1000)}
           onAgain={() => {
             startRef.current = Date.now();
             completedStepsRef.current = 0;
             setEarRight(0);
             setEarTotal(0);
+            setMistakes([]);
             setStep('warmup');
           }}
           onHome={() => navigate('/home')}
@@ -194,7 +203,7 @@ function EarStep({
 }: {
   right: number;
   total: number;
-  onAnswer: (correct: boolean) => void;
+  onAnswer: (correct: boolean, target: number, chosen: number) => void;
   onDone: () => void;
   onSkip: () => void;
 }) {
@@ -228,7 +237,7 @@ function EarStep({
     const correct = pc === target;
     setAnswered({ pc, correct });
     if (correct) vibrate(15); else vibratePattern([30, 50, 30]);
-    onAnswer(correct);
+    onAnswer(correct, target, pc);
   };
 
   const nextOne = () => {
@@ -444,16 +453,23 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
 
 /* ============ Step 4: 完成 ============ */
 function DoneStep({
-  earRight, earTotal, totalSeconds, onAgain, onHome,
+  earRight, earTotal, mistakes, totalSeconds, onAgain, onHome,
 }: {
   earRight: number;
   earTotal: number;
+  mistakes: EarMistake[];
   totalSeconds: number;
   onAgain: () => void;
   onHome: () => void;
 }) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
+
+  const replay = async (pc: number) => {
+    await synth.unlock();
+    synth.playFret(4, ((pc - 2) % 12 + 12) % 12, 2.0);
+  };
+
   return (
     <section className="card daily-done">
       <div className="card-kicker">完成 ✓</div>
@@ -468,7 +484,35 @@ function DoneStep({
           <div className="daily-done-label">听音正确</div>
         </div>
       </div>
-      <p style={{ color: 'var(--text-dim)', fontSize: 13, textAlign: 'center' }}>
+
+      {mistakes.length > 0 && (
+        <div className="daily-mistakes">
+          <div className="daily-mistakes-title">📌 听音错题回顾</div>
+          <p className="daily-mistakes-hint">点正确答案再听一次，加深印象。</p>
+          <div className="daily-mistakes-list">
+            {mistakes.map((m, i) => (
+              <div key={i} className="daily-mistake-item">
+                <button
+                  type="button"
+                  className="chip daily-mistake-correct"
+                  onClick={() => replay(m.target)}
+                  aria-label={`重听正确答案 ${pcToName(m.target)}`}
+                >
+                  ▶ {pcToName(m.target)}
+                </button>
+                <span className="daily-mistake-arrow">你选了</span>
+                <span className="chip daily-mistake-wrong">{pcToName(m.chosen)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {mistakes.length === 0 && earTotal > 0 && (
+        <p className="daily-mistakes-empty">🌟 听音全对，今天耳朵在线！</p>
+      )}
+
+      <p style={{ color: 'var(--text-dim)', fontSize: 13, textAlign: 'center', marginTop: 12 }}>
         练习数据已记录。坚持每天来一次，连续天数会更长 🔥
       </p>
       <div className="daily-actions">
