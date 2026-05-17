@@ -1646,3 +1646,40 @@ README.md                        # 5 轮迭代记录
 - P1：RhythmPatterns `#6366f1` 硬编码 → 加 `--accent-2` token 或换 `--accent-cyan`
 - P2：12 处 `style={{ marginTop / justifyContent }}` 杂项 → 可抽 `.daily-actions`-style utility
 
+
+### Round 35 _2026-05-17_: 零硬编码颜色 + 五度圈速答 chip 系统化
+
+**痛点（Designer round34 audit 未做项）**
+- `PracticePage.tsx:292` 节拍色块用 `#6366f1` 硬编码 indigo — 项目 token 之外的唯一颜色，浅色主题下显得突兀
+- `PracticePage.tsx:798` 五度圈速答 chip 用 5 个属性 inline 实现 done/current/idle 状态 — round34 的 `.chip.correct` 已能复用
+- 节拍色块 active 高亮跨主题不一致：原 `#fff` 背景 + `#1f2937` 字色在 light 模式下变成"白底深字"（与周围所有彩色块视觉断层）
+
+**PRD（外科手术 · 两件小事）**
+1. 新增 token `--accent-2`（dark `#6366f1` / light `#4f46e5`），替换 PracticePage 节拍色块的 indigo 硬编码
+2. 节拍色块 active 高亮改为 `--brand-strong` + `#1f1500` 字色 — 跨主题一致的"放大并橙化"，与产品主色调统一
+3. 五度圈速答 chip 复用 `.chip.correct`，inline 从 7 个属性 → 3 个（仅保留布局相关的 minWidth/fontSize/borderColor）
+
+**实现（Dev）**
+- `src/styles/global.css`: `:root` + `[data-theme="light"]` 各加 1 行 `--accent-2`
+- `src/pages/PracticePage.tsx`:
+  - 节拍色块抽 `baseBg` 中间变量，4 种节拍 → 4 个 token (`--brand` / `--accent-cyan` / `--success` / `--accent-2`)
+  - active 高亮：背景 `--brand-strong`、字 `#1f1500`、边框 `--brand`
+  - 速答 chip：`className={'chip' + mod}` + 仅保留 `borderColor: current ? 'var(--brand)' : undefined`
+  - `--text-dim` → `--text-muted`（顺手清，本文件这处）
+  - `--border` → `--line-soft`、`--green` → `--success`、`--primary` → `--brand`（同一区块内）
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅
+- `npm run build` ✅ (gzip ~124 KB, 持平)
+
+**Karpathy 自检**
+- ✅ `--accent-2` 是真正缺失的语义槽，不是为了对称硬塞
+- ✅ CAGED 指板的 `#ef4444/#f59e0b/#06b6d4` 保留硬编码（功能性音乐学色编码，色盲友好考虑，不当作主题颜色）
+- ✅ 不全文 replaceAll `--text-dim` → `--text-muted`（PracticePage 还有 90+ 处，风险/收益不对，等下次专门轮）
+- ✅ 节拍色块没有抽 `.beat-cell` 类簇（单点使用，YAGNI）
+
+**剩余 P1 待办（不本轮做）**
+- PracticePage `--text-dim` 90+ 处大规模替换
+- 3 种 subpage header（SubpageHero / .subpage-header / card-kicker）共存的进一步收敛 — 暂可接受
+

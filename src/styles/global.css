@@ -42,6 +42,7 @@ button { font-family: inherit; }
   --danger-2: #FB7185;
   --hero-grad: linear-gradient(135deg,#20152E 0%,#0F2230 52%,#111827 100%);
   --brand-ring: 0 0 0 1px rgba(245,158,11,0.22), 0 12px 36px rgba(245,158,11,0.12);
+  --accent-2: #6366f1;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -837,6 +838,7 @@ input, select, textarea { font-size: 16px; }
   --accent-cyan: #0891b2;
   --success: #059669;
   --danger-2: #e11d48;
+  --accent-2: #4f46e5;
   --hero-grad: linear-gradient(135deg,#FFF4D6 0%,#E0F2FE 48%,#F8FAFC 100%);
   --brand-ring: 0 0 0 1px rgba(217,119,6,0.18), 0 12px 28px rgba(217,119,6,0.12);
 }

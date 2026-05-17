@@ -283,17 +283,20 @@ function RhythmPatterns() {
         <div className="chip-row" style={{ justifyContent: 'center', marginTop: 14, gap: 4 }}>
           {p.beats.map((b, i) => {
             const isActive = playing && i === currentBeat;
+            const baseBg = b === 'D' ? 'var(--brand)'
+              : b === 'U' ? 'var(--accent-cyan)'
+              : b === 'T' ? 'var(--success)'
+              : /^[1-6]$/.test(b) ? 'var(--accent-2)'
+              : 'var(--bg-soft)';
             return (
               <span key={i} style={{
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 width: 36, height: 36, borderRadius: 8, fontSize: 14, fontWeight: 600,
-                background: isActive
-                  ? '#fff'
-                  : b === 'D' ? 'var(--primary)' : b === 'U' ? 'var(--accent)' : b === 'T' ? 'var(--green)' : /^[1-6]$/.test(b) ? '#6366f1' : 'var(--bg-soft)',
+                background: isActive ? 'var(--brand-strong)' : baseBg,
                 color: isActive
-                  ? '#1f2937'
-                  : b === '·' ? 'var(--text-dim)' : '#fff',
-                border: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
+                  ? '#1f1500'
+                  : b === '·' ? 'var(--text-muted)' : '#fff',
+                border: isActive ? '2px solid var(--brand)' : '1px solid var(--line-soft)',
                 transform: isActive ? 'scale(1.25)' : 'scale(1)',
                 transition: 'all .08s',
               }}>{b}</span>
@@ -786,14 +789,13 @@ function FifthsQuiz() {
               {FIFTHS_MAJOR.map((name, idx) => {
                 const done = idx < speedStep;
                 const current = idx === speedStep;
+                const mod = done ? ' correct' : '';
                 return (
                   <button key={name}
-                    className="chip"
+                    className={'chip' + mod}
                     style={{
                       minWidth: 56, fontSize: 15, fontWeight: 700,
-                      background: done ? 'var(--green)' : current ? 'var(--bg-soft)' : 'var(--bg-soft)',
-                      color: done ? '#fff' : 'var(--text)',
-                      borderColor: done ? 'var(--green)' : current ? 'var(--primary)' : 'var(--border)',
+                      borderColor: current ? 'var(--brand)' : undefined,
                       borderWidth: current ? 2 : 1,
                       opacity: done ? 0.7 : 1,
                     }}
