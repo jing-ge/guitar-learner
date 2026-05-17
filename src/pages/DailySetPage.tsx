@@ -128,10 +128,25 @@ export default function DailySetPage() {
     finalize(true);
   };
 
+  const stepTitle = step === 'warmup' ? '热身 · 调音' : step === 'ear' ? '听音辨认' : step === 'play' ? '和弦跟弹' : '';
+
   return (
     <div className="daily-set page-enter">
       {step !== 'intro' && step !== 'done' && (
-        <ProgressBar step={step} />
+        <>
+          <div className="subpage-header">
+            <button
+              className="btn btn-ghost subpage-back"
+              onClick={() => finalize(false)}
+              aria-label="退出每日套餐"
+            >
+              ← 退出套餐
+            </button>
+            <div className="subpage-title">{stepTitle}</div>
+            <div className="subpage-meta">每日 5 分钟</div>
+          </div>
+          <ProgressBar step={step} />
+        </>
       )}
 
       {step === 'intro' && (
@@ -398,19 +413,13 @@ function EarStep({
         <div className="chip-row" style={{ marginTop: 12, justifyContent: 'center' }}>
           {ALL_ROOTS.map(r => {
             const isChosen = answered?.kind === 'note' && answered.chosenPc === r.pc;
-            const isRight = answered?.correct && isChosen;
-            const isWrong = answered && !answered.correct && isChosen;
-            const isCorrect = answered && r.pc === current.pc;
-            let style: React.CSSProperties | undefined;
-            if (answered) {
-              if (isCorrect) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-              else if (isWrong) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
-            }
+            const isCorrect = !!answered && r.pc === current.pc;
+            const isWrong = !!answered && !answered.correct && isChosen;
+            const mod = isCorrect ? ' correct' : isWrong ? ' wrong' : '';
             return (
               <button
                 key={r.pc}
-                className={'chip' + (isRight ? ' active' : '')}
-                style={style}
+                className={'chip' + mod}
                 onClick={() => chooseNote(r.pc)}
                 disabled={!!answered}
               >
@@ -423,19 +432,13 @@ function EarStep({
         <div className="chip-row" style={{ marginTop: 14, justifyContent: 'center', gap: 12 }}>
           {(['major', 'minor'] as const).map(q => {
             const isChosen = answered?.kind === 'quality' && answered.chosenQuality === q;
-            const isRight = answered?.correct && isChosen;
-            const isWrong = answered && !answered.correct && isChosen;
-            const isCorrect = answered && q === current.quality;
-            let style: React.CSSProperties | undefined = { minWidth: 88, fontSize: 15, fontWeight: 700 };
-            if (answered) {
-              if (isCorrect) style = { ...style, background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-              else if (isWrong) style = { ...style, background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
-            }
+            const isCorrect = !!answered && q === current.quality;
+            const isWrong = !!answered && !answered.correct && isChosen;
+            const mod = isCorrect ? ' correct' : isWrong ? ' wrong' : '';
             return (
               <button
                 key={q}
-                className={'chip' + (isRight ? ' active' : '')}
-                style={style}
+                className={'chip chip-quality' + mod}
                 onClick={() => chooseQuality(q)}
                 disabled={!!answered}
               >
@@ -615,14 +618,14 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
         </div>
       ) : (
         <div className="chip-row" style={{ justifyContent: 'center', marginTop: 8 }}>
-          {sequence.map((id, i) => (
-            <span key={i} className="chip" style={{
-              minWidth: 56,
-              background: i === chordIdx && playing ? 'var(--primary)' : 'var(--bg-soft)',
-              color: i === chordIdx && playing ? '#1f1500' : 'var(--text)',
-              borderColor: i === chordIdx && playing ? 'var(--primary)' : 'var(--border)',
-            }}>{id}</span>
-          ))}
+          {sequence.map((id, i) => {
+            const isCurrent = i === chordIdx && playing;
+            return (
+              <span key={i} className={'chip' + (isCurrent ? ' playing' : '')} style={{ minWidth: 56 }}>
+                {id}
+              </span>
+            );
+          })}
         </div>
       )}
 

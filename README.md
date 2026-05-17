@@ -1604,3 +1604,45 @@ README.md                        # 5 轮迭代记录
 - ✅ Discriminated union > optional fields — 编译期防错胜运行时检查
 - ✅ 删 auto-play effect 而非加状态修复 bug — 减少而非增加复杂度
 
+
+### Round 34 _2026-05-17_: UI 一致性整治（design system token 收敛）
+
+**痛点（Designer 审计发现）**
+- **两个并行的 token 家族**：`--primary/--border/--text-dim/--text`（legacy） vs `--brand/--line-soft/--text-muted/--text-body/--text-strong`（modern）。Round 30-33 新增的 daily-set CSS 沉默回归到 legacy 一侧，造成暗色看似 OK、**浅色模式下 daily-progress / daily-mistakes 边框比相邻区域明显更硬**
+- **chip 状态 inline 重复 6+ 次**：`style={{ background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' }}` 在 DailySetPage ×2、PracticePage ×2、ScalesPage、CircleOfFifthsPage 全部独立写，无共享类
+- **3 种 subpage header 模式**：`SubpageHero` 组件（7 leaf 页）/ `.subpage-header` sticky pill（hubs）/ "card + card-kicker"（daily-set）共存；用户从 Home → DailySet → Tuner 三跳之内见 3 种头部样式
+- **App.tsx 主题切换按钮**：裸 inline 样式，绕过 `.btn` 系统，无 focus-visible ring，键盘 a11y 缺失
+- **`#6366f1` 硬编码 indigo**：RhythmPatterns 使用了项目 token 之外的颜色（已识别，本轮不动 — P1）
+
+**PRD（外科手术，5 项有边界落地）**
+1. **DailySet CSS 块 token 现代化**（global.css 1268-1452）：`--border` → `--line-soft`，`--primary` → `--brand` / `--brand-strong`，`--text-dim` → `--text-muted`（hint）/ `--text-body`（copy）/ `--text-strong`（emphasis），`--green` → `--success`，`--danger` → `--danger-2`；同步 light-mode 别名色值。零结构变更
+2. **新增 `.chip.correct` / `.chip.wrong` / `.chip.playing` 状态修饰类** + `.chip-quality` 尺寸辅助类，替换 **6 处** inline 颜色 override（DailySetPage note picker / quality picker / chord chip list；PracticePage ListeningQuiz / FifthsQuiz；ScalesPage；CircleOfFifthsPage）
+3. **DailySetPage 加 `.subpage-header` 共享头**：warmup/ear/play 三步顶部统一显示「← 退出套餐 / 步骤名 / 每日 5 分钟」；退出走 `finalize(false)` 复用 round32 兜底记录逻辑，不丢数据
+4. **App.tsx 主题切换按钮迁移到 `.btn .btn-ghost .btn-sm`** + 新增 `.header-cluster` / `.theme-toggle` 类；恢复键盘 focus ring + aria-label
+5. **PracticePage SongChords list mode** 矩形格子保留布局，仅 token 现代化（`--primary` → `--brand`，`--text` → `--text-strong`，`--border` → `--line-soft`）
+
+**实现（Dev = orchestrator 亲自落地）**
+- `src/styles/global.css`: 4 个新类 + 1 个 daily 块 token 替换 + light-mode 鬼色微调
+- `src/pages/DailySetPage.tsx`: 3 处 chip override → 类；新增整页 subpage-header（30 行）
+- `src/pages/PracticePage.tsx`: 2 处 chip override → 类 + SongChords token 替换
+- `src/pages/ScalesPage.tsx`: 1 处 chip override → 类
+- `src/pages/CircleOfFifthsPage.tsx`: 1 处 chip override → 类
+- `src/App.tsx`: 主题切换按钮重构
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅ (A/B/C/D/E/F 全 baseline 内)
+- `npm run build` ✅ (gzip 124.19 KB, +0.5 KB)
+- Diff 统计：6 文件 +95/-88，无新增依赖
+
+**Karpathy 自检**
+- ✅ 不做"统一所有 subpage header" — Designer 明确不在本轮范围（3 种共存可接受，关键是 daily-set 不再是孤儿）
+- ✅ 不动 PracticePage 77 处其余 inline 样式 / 不动 DrumMachinePage 168 处（低 ROI，留作未来专门轮）
+- ✅ 不删 legacy tokens（`--primary` 等仍被其他文件引用） — 别名共存，平滑过渡
+- ✅ 删 inline override → 用类，**减少代码同时提升一致性**
+
+**未来轮候选（Designer 已识别，本轮不做）**
+- P1：`--text-dim` 在 PracticePage 90+ 处使用 → 大规模 sed 替换风险高，等下次触碰这文件时顺手清
+- P1：RhythmPatterns `#6366f1` 硬编码 → 加 `--accent-2` token 或换 `--accent-cyan`
+- P2：12 处 `style={{ marginTop / justifyContent }}` 杂项 → 可抽 `.daily-actions`-style utility
+

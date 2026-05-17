@@ -220,14 +220,11 @@ function EarTest({ pcs, rootPc, scaleName }: { pcs: number[]; rootPc: number; sc
       <div className="chip-row" style={{ marginTop: 8, justifyContent: 'center' }}>
         {pcs.map((pc, i) => {
           const isChosen = answered?.pc === pc;
-          const isRight = answered?.correct && isChosen;
           const isWrong = answered && !answered.correct && isChosen;
           const isAnswer = answered && pc === targetPc;
-          let style: React.CSSProperties | undefined;
-          if (isAnswer) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-          else if (isWrong) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
+          const mod = isAnswer ? ' correct' : isWrong ? ' wrong' : '';
           return (
-            <button key={`${pc}-${i}`} className={'chip' + (isRight ? ' active' : '')} style={{ minWidth: 48, ...style }}
+            <button key={`${pc}-${i}`} className={'chip' + mod} style={{ minWidth: 48 }}
               onClick={() => choose(pc)} disabled={!!answered}>
               {pcToName(pc)}
             </button>

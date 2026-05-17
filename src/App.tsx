@@ -42,8 +42,12 @@ export default function App() {
         <NavLink to="/home" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="brand">🎸 吉他学习</div>
         </NavLink>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={toggleTheme} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', padding: 4 }}>
+        <div className="header-cluster">
+          <button
+            className="btn btn-ghost btn-sm theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+          >
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
           <div className="brand-sub">离线版</div>

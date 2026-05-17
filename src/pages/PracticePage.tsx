@@ -432,15 +432,18 @@ function SongChords() {
         <div className="card" style={{textAlign:'center'}}>
           <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>{song.title}</div>
           <div style={{display:'flex',flexWrap:'wrap',gap:6,justifyContent:'center'}}>
-            {song.chords.map((id, i) => (
-              <span key={i} style={{
-                display:'inline-flex',alignItems:'center',justifyContent:'center',
-                minWidth:44,height:36,borderRadius:8,fontSize:15,fontWeight:700,padding:'0 8px',
-                background: i === currentIdx && playing ? 'var(--primary)' : 'var(--bg-soft)',
-                color: i === currentIdx && playing ? '#1f1500' : 'var(--text)',
-                border: '1px solid var(--border)', transition:'all .12s'
-              }}>{id}</span>
-            ))}
+            {song.chords.map((id, i) => {
+              const isCurrent = i === currentIdx && playing;
+              return (
+                <span key={i} style={{
+                  display:'inline-flex',alignItems:'center',justifyContent:'center',
+                  minWidth:44,height:36,borderRadius:8,fontSize:15,fontWeight:700,padding:'0 8px',
+                  background: isCurrent ? 'var(--brand)' : 'var(--bg-soft)',
+                  color: isCurrent ? '#1f1500' : 'var(--text-strong)',
+                  border: '1px solid var(--line-soft)', transition:'all .12s'
+                }}>{id}</span>
+              );
+            })}
           </div>
           <div style={{fontSize:12,color:'var(--text-dim)',marginTop:6}}>BPM {song.bpm} · 每和弦 {song.beatsPerChord} 拍</div>
         </div>
@@ -555,9 +558,9 @@ function ListeningQuiz() {
           const isChosen = answered?.pc === r.pc;
           const isRight = answered?.correct && isChosen;
           const isWrong = answered && !answered.correct && isChosen;
+          const mod = isRight ? ' active' : isWrong ? ' wrong' : '';
           return (
-            <button key={r.pc} className={'chip' + (isRight ? ' active' : '')}
-              style={isWrong ? { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' } : undefined}
+            <button key={r.pc} className={'chip' + mod}
               onClick={() => !answered && choose(r.pc)} disabled={!!answered}>{r.sharp}</button>
           );
         })}
@@ -739,14 +742,11 @@ function FifthsQuiz() {
           <div className="chip-row" style={{ marginTop: 10, justifyContent: 'center' }}>
             {options.map((opt, i) => {
               const isChosen = answered?.answer === opt;
-              const isCorrect = opt === question.answer;
-              let style: React.CSSProperties | undefined;
-              if (answered) {
-                if (isCorrect) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-                else if (isChosen && !answered.correct) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
-              }
+              const isCorrect = answered && opt === question.answer;
+              const isWrong = answered && isChosen && !answered.correct;
+              const mod = isCorrect ? ' correct' : isWrong ? ' wrong' : '';
               return (
-                <button key={`${opt}-${i}`} className="chip" style={{ minWidth: 56, ...style }}
+                <button key={`${opt}-${i}`} className={'chip' + mod} style={{ minWidth: 56 }}
                   onClick={() => choose(opt)} disabled={!!answered}>{opt}</button>
               );
             })}

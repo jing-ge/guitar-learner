@@ -386,17 +386,14 @@ export default function CircleOfFifthsPage() {
           <div className="chip-row" style={{ marginTop: 10, justifyContent: 'center' }}>
             {quizOptions.map((opt, i) => {
               const isChosen = quizAnswered?.answer === opt;
-              const isCorrect = opt === quizQuestion.answer;
-              let style: React.CSSProperties | undefined;
-              if (quizAnswered) {
-                if (isCorrect) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-                else if (isChosen && !quizAnswered.correct) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
-              }
+              const isCorrect = quizAnswered && opt === quizQuestion.answer;
+              const isWrong = quizAnswered && isChosen && !quizAnswered.correct;
+              const mod = isCorrect ? ' correct' : isWrong ? ' wrong' : '';
               return (
                 <button
                   key={`${opt}-${i}`}
-                  className="chip"
-                  style={{ ...style, minWidth: 56 }}
+                  className={'chip' + mod}
+                  style={{ minWidth: 56 }}
                   onClick={() => handleQuizAnswer(opt)}
                   disabled={!!quizAnswered}
                 >
