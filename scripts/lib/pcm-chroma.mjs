@@ -1,6 +1,6 @@
 import { fftRealToComplex, magnitudeSpectrum } from './fft.mjs';
 
-const DEFAULT_FFT_SIZE = 2048;
+const DEFAULT_FFT_SIZE = 8192;
 const DEFAULT_SAMPLE_RATE = 22050;
 
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
@@ -73,9 +73,19 @@ export function pcmToChroma(pcm, sampleRate = DEFAULT_SAMPLE_RATE) {
   const chromaRaw = new Array(12).fill(0);
   for (let i = minBin; i <= maxBin; i++) {
     const freq = (i + 0.5) * binSize;
+    if (freq <= 0) continue;
     const m = 12 * Math.log2(freq / 440) + 69;
-    const pc = ((Math.round(m) % 12) + 12) % 12;
-    chromaRaw[pc] += mag[i];
+    const pcLowFloat = Math.floor(m);
+    const pcHighFloat = pcLowFloat + 1;
+    const pcLow = ((pcLowFloat % 12) + 12) % 12;
+    const pcHigh = ((pcHighFloat % 12) + 12) % 12;
+    const frac = m - pcLowFloat;  // [0, 1)
+    // 软分配：cos² 半窗，能量守恒
+    const halfPi = Math.PI / 2;
+    const wLow = Math.cos(frac * halfPi) ** 2;
+    const wHigh = Math.sin(frac * halfPi) ** 2;
+    chromaRaw[pcLow] += mag[i] * wLow;
+    chromaRaw[pcHigh] += mag[i] * wHigh;
   }
 
   // HPS 抑制（五度 + 大三度）

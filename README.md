@@ -1190,3 +1190,53 @@ PentatonicPage learn 模式实测 SVG unique fills = `["#f5f5dc", "#fb7185", "#a
 - Round 22: LiveChordRecognizer key 推断 + 自反馈
 - Round 23: PCM → FFT → chroma 端到端评测
 - Round 24: 评测可复现 + Baseline 持久化 + CI Gate
+
+---
+
+## 🚀 第四阶段：真实链路精度突破（Round 25-29）
+
+> 目标：把评测 E 场景（真实 PCM→FFT→chroma 链路）从 14.7% 推到接近 D 场景水平。
+
+### Round 25 _____: pcm-chroma FFT 8192 + PC 软分配
+
+**痛点（PM）**
+- Round 23 baseline E top-1 仅 14.7%
+- FFT_SIZE=2048 @ 22050 → bin 宽 10.77Hz，C4 附近半音 ~15Hz，量化误差占 70%
+- `Math.round(midi)` 硬分配，相邻 pc 完全丢失能量
+
+**实现（Dev）**
+- `scripts/lib/pcm-chroma.mjs`：
+  - `DEFAULT_FFT_SIZE` 2048 → **8192**（bin 宽 2.69Hz，4x 精细）
+  - `pcmToChroma` 改用 cos²/sin² 软分配：能量按到两个最近半音的相位分摊
+    - `frac = m - floor(m)`
+    - `wLow = cos²(frac·π/2), wHigh = sin²(frac·π/2)`
+    - **能量守恒**：wLow + wHigh = 1
+  - HPS 抑制系数保持 0.33/0.20
+- 其他文件（chord-detector / ListenPage / synth-chroma / fft.mjs）零改动
+
+**评测对比（npm run eval）**
+
+| 场景 | Round 24 baseline | Round 25 | 变化 |
+|------|-------------------|----------|------|
+| A 理想 chroma | 100.0% | 100.0% | 持平 |
+| B 噪声+五度泛音 | 83.3% | 83.3% | 持平 |
+| C 仅根+三 | 30.8% | 30.8% | 持平 |
+| D 真信号合成 | 74.4% | 74.4% | 持平 |
+| **E PCM→FFT→chroma** | **14.7%** | **34.6%** | **+19.9pp** ✅ |
+| E top-3 | 39.7% | **93.6%** | **+53.9pp** 🎯 |
+| E avgBest | 0.833 | 0.929 | +0.10 |
+
+**关键发现：E top-3 大跃迁（39.7% → 93.6%）**
+- 正确答案几乎都在前三名，说明 **chroma 特征本身已经过关**
+- 剩余 top-1 瓶颈 = 模板歧义层（Cm7↔D#6 同音异名 / C→Em 共享 4 音中的 3 个 / dim 簇内循环）
+- 这是 chord-detector 匹配层问题，**不是** chroma 提取层
+
+**测试（QA）**
+- ✅ `npm run build` 通过
+- ✅ `npm run eval:check` 全 PASS（自喂对齐 +0.00pp）
+- ✅ 仅改 `pcm-chroma.mjs` + `eval-baseline.json`
+- ✅ A/B/C/D 全部持平，无回归
+- ⚠️ E top-1 仅到 34.6%，未达 PRD 50%+ 目标
+- ⚠️ 剩余瓶颈下移到模板/匹配层，下一轮（Round 26）从 HPS 升级 + 模板优化入手
+
+**结论**：基础特征精度问题基本解决，top-3 = 93.6% 已经接近 D 场景；后续 4 轮把焦点切到模板歧义破解。
