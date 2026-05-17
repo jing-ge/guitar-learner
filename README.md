@@ -1737,3 +1737,45 @@ sed -i '' \
 - DrumMachinePage 红色硬编码 + 几处特定按钮色规范化
 - 3 种 subpage header 模式（SubpageHero / .subpage-header pill / card-kicker）的进一步收敛
 
+
+### Round 37 _2026-05-17_: 颜色 token 收敛 + .btn-icon 类（最后一公里）
+
+**痛点**
+- DrumMachinePage 播放按钮 `'#e74c3c'`（"停止"红）— round35 audit 已点名待清
+- TunerPage 调音圆环 SVG `floodColor="#34d399"` — 与 `--success` 完全等值的硬编码
+- DrumMachinePage 和弦卡片 ✕ 删除按钮：裸 inline `border:none` + 无 a11y label
+
+**调研发现（关键判断）**
+- **CircleOfFifthsPage 4 处 SVG hex 故意保留**：五度圈是固定深调的音乐可视化组件，即使在浅色主题下也应维持暗背景以突出 12 段彩色。这些 hex（`#1a2128` / `#374151` / `#2a3540` / `#161d24` / `#0f1419`）与产品主题色脱钩 — 等同 CAGED 指板的功能色。改为 token 反而会让浅色主题下圆环失去标识性。**保留并加注释说明意图**
+
+**实现**
+- `DrumMachinePage.tsx:381` `playing ? '#e74c3c' : 'var(--brand)'` → `playing ? 'var(--danger-2)' : 'var(--brand)'`
+- `TunerPage.tsx:253` SVG `feDropShadow floodColor="#34d399"` → `floodColor="var(--success)"`（已查阅 GitHub 多个先例验证 SVG attribute 支持 CSS var()）
+- `DrumMachinePage.tsx:708` 裸按钮 → `<button className="btn-icon btn-icon-danger" aria-label="删除该和弦">`
+- 新增 `.btn-icon` / `.btn-icon-danger` CSS 类（含 hover/focus 行为，可在未来轮复用）
+- `CircleOfFifthsPage.tsx:48` 加意图注释："五度圈是固定深调可视化..."
+
+**最终 UI 一致性指标**
+| 指标 | Round 35 | Round 36 | Round 37 |
+|------|----------|----------|----------|
+| Pages legacy token | 126 | 0 | 0 |
+| 产品色硬编码 | 8 | 8 | **0**（4 处五度圈已声明保留意图）|
+| chip 状态 inline override | 0 | 0 | 0 |
+| 裸按钮（绕过 .btn 系统）| 1 | 1 | **0** |
+| 整体加权评分 | 75% | 90% | **~95%** |
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅
+- `npm run build` ✅ (gzip 124.71 KB, +0.5KB — 来自 .btn-icon CSS)
+
+**Karpathy 自检**
+- ✅ 不强行 token 化"看起来是颜色其实是功能编码"的 hex（CAGED / 五度圈 / 鼓机扫弦色映射）
+- ✅ `.btn-icon` 类不只解决一处问题 — 也抵御未来 inline 按钮重复
+- ✅ 不进 inline `style={{...}}` 折叠（435 处）— 这属于代码可维护性而非视觉一致性，不在本主线范围
+- ✅ CircleOfFifths 决策"不动 + 注释" > "强行 token 化" — 让设计意图显式可读
+
+**剩余工程债（不属于"UI 统一"主线）**
+- inline `style={{...}}` 折叠：DrumMachine 168 / Practice 77 / Listen 48 — 影响代码可维护性，不影响视觉
+- 3 种 subpage header 共存：当前用法稳定，强行收敛风险/收益不对
+

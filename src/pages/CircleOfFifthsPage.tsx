@@ -46,6 +46,8 @@ function CircleSvg({ selected, onSelect, showMinor }: CircleSvgProps) {
 
   return (
     <svg viewBox="0 0 400 400" style={{ width: '100%', maxWidth: 380, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}>
+      {/* 五度圈是固定深调可视化（即使在浅色主题下也维持暗调），让 12 段彩色更突出。
+          以下 hex 故意不走 token，仅是 SVG 视觉素材色，与产品主题脱钩。 */}
       {/* 底色 */}
       <circle cx={cx} cy={cy} r={outerR + 8} fill="#1a2128" stroke="#374151" strokeWidth={2} />
 

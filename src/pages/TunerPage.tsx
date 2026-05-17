@@ -250,7 +250,7 @@ export default function TunerPage() {
         <svg className="tuner-gauge-svg" viewBox="0 0 320 180" aria-hidden="true">
           <defs>
             <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
-              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#34d399" floodOpacity="0.85" />
+              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="var(--success)" floodOpacity="0.85" />
             </filter>
           </defs>
 

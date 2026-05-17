@@ -378,7 +378,7 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
             padding: '12px 20px', 
             borderRadius: 10, 
             border: 'none', 
-            background: playing ? '#e74c3c' : 'var(--brand)', 
+            background: playing ? 'var(--danger-2)' : 'var(--brand)', 
             color: '#fff', 
             fontSize: 15, 
             fontWeight: 700,
@@ -705,7 +705,13 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
                   <div style={{ fontSize: 16, fontWeight: 700, color: curIdx === i ? '#fff' : 'var(--text-strong)' }}>{chordDisplayName(ch)}</div>
                   <div style={{ fontSize: 9, color: curIdx === i ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>{chordDef?.category ?? ''}</div>
                   {editing.chords.length > 1 && (
-                    <button style={{ fontSize: 9, color: 'var(--danger-2)', marginTop: 2, background: 'none', border: 'none', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); updateEditing({ chords: editing.chords.filter((_, j) => j !== i) }); }}>✕</button>
+                    <button
+                      type="button"
+                      className="btn-icon btn-icon-danger"
+                      style={{ marginTop: 2 }}
+                      aria-label="删除该和弦"
+                      onClick={e => { e.stopPropagation(); updateEditing({ chords: editing.chords.filter((_, j) => j !== i) }); }}
+                    >✕</button>
                   )}
                 </div>
               );
