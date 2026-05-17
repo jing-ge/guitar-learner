@@ -19,10 +19,21 @@ import { vibrate, vibratePattern } from '../utils/haptic';
 
 type Step = 'intro' | 'warmup' | 'ear' | 'play' | 'done';
 
-interface EarMistake {
-  target: number;   // 正确答案 pc
-  chosen: number;   // 用户选的 pc
+/** 听音题型（round33） */
+interface NoteQuestion {
+  kind: 'note';
+  pc: number;            // 0~11
 }
+interface QualityQuestion {
+  kind: 'quality';
+  rootPc: number;        // 根音
+  quality: 'major' | 'minor';
+}
+type EarQuestion = NoteQuestion | QualityQuestion;
+
+type EarMistake =
+  | { kind: 'note'; target: number; chosen: number }
+  | { kind: 'quality'; rootPc: number; correct: 'major' | 'minor'; chosen: 'major' | 'minor' };
 
 const QUIZ_QUESTIONS = 5;
 const PLAY_BPM = 80;
@@ -133,10 +144,10 @@ export default function DailySetPage() {
         <EarStep
           right={earRight}
           total={earTotal}
-          onAnswer={(correct, target, chosen) => {
+          onAnswer={(correct, mistake) => {
             setEarTotal(t => t + 1);
             if (correct) setEarRight(r => r + 1);
-            else setMistakes(prev => [...prev, { target, chosen }]);
+            else if (mistake) setMistakes(prev => [...prev, mistake]);
           }}
           onDone={finishEar}
           onSkip={finishEar}
@@ -239,17 +250,75 @@ function WarmupStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => void
 }
 
 /* ============ Step 2: 听音辨认 ============ */
+
+/** 5 题题型组合：3 道单音 + 2 道大小三辨认，位置随机打乱 */
+function buildEarQuiz(): EarQuestion[] {
+  const qs: EarQuestion[] = [];
+  const usedPc = new Set<number>();
+  // 3 道单音
+  while (qs.filter(q => q.kind === 'note').length < 3) {
+    const pc = Math.floor(Math.random() * 12);
+    if (usedPc.has(pc)) continue;
+    usedPc.add(pc);
+    qs.push({ kind: 'note', pc });
+  }
+  // 2 道大小三辨认（根音从常见 6 个里挑：C D E F G A）
+  const QUALITY_ROOTS = [0, 2, 4, 5, 7, 9];
+  const usedQ = new Set<string>();
+  while (qs.filter(q => q.kind === 'quality').length < 2) {
+    const root = QUALITY_ROOTS[Math.floor(Math.random() * QUALITY_ROOTS.length)];
+    const q: 'major' | 'minor' = Math.random() < 0.5 ? 'major' : 'minor';
+    const key = `${root}-${q}`;
+    if (usedQ.has(key)) continue;
+    usedQ.add(key);
+    qs.push({ kind: 'quality', rootPc: root, quality: q });
+  }
+  // Fisher-Yates shuffle
+  for (let i = qs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+  }
+  return qs;
+}
+
+/** 播放单音：基准 C4 = midi 60，pc 0 → C4 */
+function playNote(pc: number) {
+  return synth.unlock().then(() => synth.playMidi(60 + pc, 2.0));
+}
+
+/** 播放三和弦：根音 + 3rd + 5th（major: 4 半音; minor: 3 半音）以分解 + 同步混合方式 */
+function playTriad(rootPc: number, quality: 'major' | 'minor') {
+  return synth.unlock().then(() => {
+    const t0 = synth.getCurrentTime();
+    const third = quality === 'major' ? 4 : 3;
+    const root = 60 + rootPc;
+    // 先分解播一遍（低 → 高），再合奏一次，便于用户听清质量
+    synth.playMidi(root,         1.2, t0);
+    synth.playMidi(root + third, 1.2, t0 + 0.25);
+    synth.playMidi(root + 7,     1.2, t0 + 0.50);
+    synth.playMidi(root,         2.0, t0 + 0.9);
+    synth.playMidi(root + third, 2.0, t0 + 0.9);
+    synth.playMidi(root + 7,     2.0, t0 + 0.9);
+  });
+}
+
 function EarStep({
   right, total, onAnswer, onDone, onSkip,
 }: {
   right: number;
   total: number;
-  onAnswer: (correct: boolean, target: number, chosen: number) => void;
+  onAnswer: (correct: boolean, mistake: EarMistake | null) => void;
   onDone: () => void;
   onSkip: () => void;
 }) {
-  const [target, setTarget] = useState(() => Math.floor(Math.random() * 12));
-  const [answered, setAnswered] = useState<{ pc: number; correct: boolean } | null>(null);
+  // 整套题在挂载时一次生成
+  const [quiz] = useState<EarQuestion[]>(buildEarQuiz);
+  const current = quiz[Math.min(total, quiz.length - 1)];
+  const [answered, setAnswered] = useState<
+    | { kind: 'note'; chosenPc: number; correct: boolean }
+    | { kind: 'quality'; chosenQuality: 'major' | 'minor'; correct: boolean }
+    | null
+  >(null);
 
   // 答完最后一题自动结束
   useEffect(() => {
@@ -259,76 +328,131 @@ function EarStep({
     }
   }, [total, onDone]);
 
-  const play = async () => {
-    await synth.unlock();
-    synth.playFret(4, ((target - 2) % 12 + 12) % 12, 2.0);
-  };
-
-  // 进入第一题自动播放一次
+  // 进入第一题时自动播一次（后续题在 nextOne 里显式触发）
   useEffect(() => {
-    if (total === 0 && !answered) {
-      const t = window.setTimeout(() => { play(); }, 300);
-      return () => window.clearTimeout(t);
-    }
+    const t = window.setTimeout(() => {
+      const q = quiz[0];
+      if (q.kind === 'note') playNote(q.pc);
+      else playTriad(q.rootPc, q.quality);
+    }, 300);
+    return () => window.clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const choose = (pc: number) => {
-    if (answered) return;
-    const correct = pc === target;
-    setAnswered({ pc, correct });
+  // 防止快速重点击造成多音叠加：1.5s 内冷却
+  const lastPlayRef = useRef<number>(0);
+  const replay = () => {
+    const now = Date.now();
+    if (now - lastPlayRef.current < 1500) return;
+    lastPlayRef.current = now;
+    if (current.kind === 'note') playNote(current.pc);
+    else playTriad(current.rootPc, current.quality);
+  };
+
+  const chooseNote = (pc: number) => {
+    if (answered || current.kind !== 'note') return;
+    const correct = pc === current.pc;
+    setAnswered({ kind: 'note', chosenPc: pc, correct });
     if (correct) vibrate(15); else vibratePattern([30, 50, 30]);
-    onAnswer(correct, target, pc);
+    onAnswer(correct, correct ? null : { kind: 'note', target: current.pc, chosen: pc });
+  };
+
+  const chooseQuality = (q: 'major' | 'minor') => {
+    if (answered || current.kind !== 'quality') return;
+    const correct = q === current.quality;
+    setAnswered({ kind: 'quality', chosenQuality: q, correct });
+    if (correct) vibrate(15); else vibratePattern([30, 50, 30]);
+    onAnswer(
+      correct,
+      correct ? null : { kind: 'quality', rootPc: current.rootPc, correct: current.quality, chosen: q },
+    );
   };
 
   const nextOne = () => {
     setAnswered(null);
-    let n = target;
-    while (n === target) n = Math.floor(Math.random() * 12);
-    setTarget(n);
-    // 自动播下一题
+    // 显式播放下一题（300ms 后，给 UI 切换留点时间）
+    const nextIdx = total; // total 已被父组件递增过，下一题就是 quiz[total]
+    const q = quiz[Math.min(nextIdx, quiz.length - 1)];
     window.setTimeout(() => {
-      synth.unlock().then(() => synth.playFret(4, ((n - 2) % 12 + 12) % 12, 2.0));
-    }, 250);
+      lastPlayRef.current = Date.now();
+      if (q.kind === 'note') playNote(q.pc);
+      else playTriad(q.rootPc, q.quality);
+    }, 300);
   };
 
   const remaining = QUIZ_QUESTIONS - total;
+
   return (
     <section className="card daily-step-card">
       <div className="card-kicker">
         第 2 步 · 听音辨认 · 剩 {Math.max(0, remaining)} / {QUIZ_QUESTIONS}
       </div>
-      <h2>👂 这是什么音？</h2>
+      <h2>
+        {current.kind === 'note' ? '👂 这是什么音？' : '🎼 这是大三还是小三和弦？'}
+      </h2>
       <div className="btn-row" style={{ justifyContent: 'center', marginTop: 6 }}>
-        <button className="btn btn-primary" onClick={play}>▶ 再听一次</button>
+        <button className="btn btn-primary" onClick={replay}>▶ 再听一次</button>
       </div>
-      <div className="chip-row" style={{ marginTop: 12, justifyContent: 'center' }}>
-        {ALL_ROOTS.map(r => {
-          const isChosen = answered?.pc === r.pc;
-          const isRight = answered?.correct && isChosen;
-          const isWrong = answered && !answered.correct && isChosen;
-          const isCorrect = answered && r.pc === target;
-          let style: React.CSSProperties | undefined;
-          if (answered) {
-            if (isCorrect) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
-            else if (isWrong) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
-          }
-          return (
-            <button
-              key={r.pc}
-              className={'chip' + (isRight ? ' active' : '')}
-              style={style}
-              onClick={() => choose(r.pc)}
-              disabled={!!answered}
-            >
-              {r.sharp}
-            </button>
-          );
-        })}
-      </div>
+
+      {current.kind === 'note' ? (
+        <div className="chip-row" style={{ marginTop: 12, justifyContent: 'center' }}>
+          {ALL_ROOTS.map(r => {
+            const isChosen = answered?.kind === 'note' && answered.chosenPc === r.pc;
+            const isRight = answered?.correct && isChosen;
+            const isWrong = answered && !answered.correct && isChosen;
+            const isCorrect = answered && r.pc === current.pc;
+            let style: React.CSSProperties | undefined;
+            if (answered) {
+              if (isCorrect) style = { background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
+              else if (isWrong) style = { background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
+            }
+            return (
+              <button
+                key={r.pc}
+                className={'chip' + (isRight ? ' active' : '')}
+                style={style}
+                onClick={() => chooseNote(r.pc)}
+                disabled={!!answered}
+              >
+                {r.sharp}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="chip-row" style={{ marginTop: 14, justifyContent: 'center', gap: 12 }}>
+          {(['major', 'minor'] as const).map(q => {
+            const isChosen = answered?.kind === 'quality' && answered.chosenQuality === q;
+            const isRight = answered?.correct && isChosen;
+            const isWrong = answered && !answered.correct && isChosen;
+            const isCorrect = answered && q === current.quality;
+            let style: React.CSSProperties | undefined = { minWidth: 88, fontSize: 15, fontWeight: 700 };
+            if (answered) {
+              if (isCorrect) style = { ...style, background: 'var(--green)', color: '#fff', borderColor: 'var(--green)' };
+              else if (isWrong) style = { ...style, background: 'var(--danger)', color: '#fff', borderColor: 'var(--danger)' };
+            }
+            return (
+              <button
+                key={q}
+                className={'chip' + (isRight ? ' active' : '')}
+                style={style}
+                onClick={() => chooseQuality(q)}
+                disabled={!!answered}
+              >
+                {q === 'major' ? '大三 (明亮)' : '小三 (忧郁)'}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {answered && (
         <div className={'quiz-feedback ' + (answered.correct ? 'right' : 'wrong')}>
-          {answered.correct ? `正确！${pcToName(target)}` : `正确答案：${pcToName(target)}`}
+          {current.kind === 'note'
+            ? (answered.correct ? `正确！${pcToName(current.pc)}` : `正确答案：${pcToName(current.pc)}`)
+            : (answered.correct
+                ? `正确！${pcToName(current.rootPc)} ${current.quality === 'major' ? '大三' : '小三'}`
+                : `正确答案：${pcToName(current.rootPc)} ${current.quality === 'major' ? '大三' : '小三'}`)}
           <div style={{ marginTop: 8 }}>
             {total < QUIZ_QUESTIONS ? (
               <button className="btn btn-primary btn-sm" onClick={nextOne}>下一题 →</button>
@@ -338,6 +462,7 @@ function EarStep({
           </div>
         </div>
       )}
+
       <div style={{ marginTop: 10, textAlign: 'center', fontSize: 13, color: 'var(--text-dim)' }}>
         本步得分：<b>{right}</b> / {total}
       </div>
@@ -537,9 +662,9 @@ function DoneStep({
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
 
-  const replay = async (pc: number) => {
-    await synth.unlock();
-    synth.playFret(4, ((pc - 2) % 12 + 12) % 12, 2.0);
+  const replayMistake = (m: EarMistake) => {
+    if (m.kind === 'note') playNote(m.target);
+    else playTriad(m.rootPc, m.correct);
   };
 
   return (
@@ -562,20 +687,41 @@ function DoneStep({
           <div className="daily-mistakes-title">📌 听音错题回顾</div>
           <p className="daily-mistakes-hint">点正确答案再听一次，加深印象。</p>
           <div className="daily-mistakes-list">
-            {mistakes.map((m, i) => (
-              <div key={i} className="daily-mistake-item">
-                <button
-                  type="button"
-                  className="chip daily-mistake-correct"
-                  onClick={() => replay(m.target)}
-                  aria-label={`重听正确答案 ${pcToName(m.target)}`}
-                >
-                  ▶ {pcToName(m.target)}
-                </button>
-                <span className="daily-mistake-arrow">你选了</span>
-                <span className="chip daily-mistake-wrong">{pcToName(m.chosen)}</span>
-              </div>
-            ))}
+            {mistakes.map((m, i) => {
+              if (m.kind === 'note') {
+                return (
+                  <div key={i} className="daily-mistake-item">
+                    <button
+                      type="button"
+                      className="chip daily-mistake-correct"
+                      onClick={() => replayMistake(m)}
+                      aria-label={`重听正确答案 ${pcToName(m.target)}`}
+                    >
+                      ▶ {pcToName(m.target)}
+                    </button>
+                    <span className="daily-mistake-arrow">你选了</span>
+                    <span className="chip daily-mistake-wrong">{pcToName(m.chosen)}</span>
+                  </div>
+                );
+              }
+              // quality
+              const correctLabel = `${pcToName(m.rootPc)} ${m.correct === 'major' ? '大三' : '小三'}`;
+              const chosenLabel = `${m.chosen === 'major' ? '大三' : '小三'}`;
+              return (
+                <div key={i} className="daily-mistake-item">
+                  <button
+                    type="button"
+                    className="chip daily-mistake-correct"
+                    onClick={() => replayMistake(m)}
+                    aria-label={`重听正确答案 ${correctLabel}`}
+                  >
+                    ▶ {correctLabel}
+                  </button>
+                  <span className="daily-mistake-arrow">你选了</span>
+                  <span className="chip daily-mistake-wrong">{chosenLabel}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

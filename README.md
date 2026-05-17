@@ -1565,3 +1565,42 @@ README.md                        # 5 轮迭代记录
 - ✅ 走向名带括号显示原始和弦（用户读得懂"卡农走向 (G-D-Em-C)"）
 - ✅ 兜底卸载记录只在已经开始练习时触发（intro 阶段不动）
 
+
+### Round 33 _2026-05-17_: 听音题型混合 — 单音 + 大小三辨认
+
+**痛点（PM）**
+- Round 30-32 的 EarStep 永远是 12 个单音辨认 → 与吉他弹奏场景脱节
+- 用户最需要的耳朵能力其实是：「这是大三还是小三和弦？」 → 直接受益于跟弹、识谱、记和弦走向
+- 单一题型做到第 5 次就腻
+
+**PRD（外科手术，扩展不重写）**
+- EarStep 5 题改为：**3 道单音辨认 + 2 道大小三辨认**，位置 Fisher-Yates 随机打乱
+- 大小三题型：从 6 个自然音根（C/D/E/F/G/A）随机选根 + 随机大/小，先分解 (root → 3rd → 5th, 0.25s 间隔) 再合奏，便于辨听
+- 错题回顾区块按 kind 分支渲染，重听复用 `playNote`/`playTriad`
+- DoneStep 错题图按题型差异展示文案
+
+**实现（Dev）**
+- 新增 discriminated union 类型：`NoteQuestion`/`QualityQuestion`/`EarQuestion`
+- `EarMistake` 也改为 discriminated union，保证编译期类型安全
+- `buildEarQuiz()` 一次性生成 5 题，`useState(buildEarQuiz)` 挂载时锁定
+- `playNote(pc)` 用 `synth.playMidi(60+pc, 2.0)` 替代旧的 `playFret(4, ...)` 桥接
+- `playTriad(rootPc, quality)` 6 个音符的精准 audio-clock 调度
+- 父组件 `onAnswer` 签名从 `(correct, target, chosen)` 改为 `(correct, mistake | null)` — 让子组件构造类型完整的 mistake
+
+**Oracle Review**
+- **🔴 Bug：auto-replay 只在 Q1 触发** — 用 `useEffect([total])` 自动播放有 stale closure 问题：`nextOne` 只重置 `answered` 不动 `total`，effect 不重跑，Q2-Q5 都得手点"再听一次"
+- **修复**：删 auto-play effect，改在 `nextOne` 里显式 `setTimeout(playXXX, 300)`；初次挂载用单独 effect 播 Q1
+- **🟡 Medium：playTriad 重入** — 用户连点"再听一次"会叠 12 路混响 → 加 1.5s 冷却 (`lastPlayRef`)
+- **🟢 Nit**：自然音根池保留（pedagogically 合理 — 避免 #/b 命名干扰大小三辨听本身）
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run eval:check` ✅
+- `npm run build` ✅ (gzip ~124 KB)
+
+**Karpathy 自检**
+- ✅ 不引入新和弦库 / 新音色 / 新依赖（复用 `synth.playMidi`）
+- ✅ 不做"音程辨认 / 七和弦辨认 / 和弦走向辨认"等更花哨题型（YAGNI）
+- ✅ Discriminated union > optional fields — 编译期防错胜运行时检查
+- ✅ 删 auto-play effect 而非加状态修复 bug — 减少而非增加复杂度
+
