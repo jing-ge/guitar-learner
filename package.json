@@ -10,7 +10,8 @@
     "preview": "vite preview --host",
     "eval": "node scripts/eval-chord-detector.mjs",
     "eval:update": "node scripts/eval-chord-detector.mjs --update-baseline",
-    "eval:check": "node scripts/eval-chord-detector.mjs --check-baseline"
+    "eval:check": "node scripts/eval-chord-detector.mjs --check-baseline",
+    "eval:song": "node scripts/song-fixture-eval.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

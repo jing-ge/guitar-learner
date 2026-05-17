@@ -1779,3 +1779,70 @@ sed -i '' \
 - inline `style={{...}}` 折叠：DrumMachine 168 / Practice 77 / Listen 48 — 影响代码可维护性，不影响视觉
 - 3 种 subpage header 共存：当前用法稳定，强行收敛风险/收益不对
 
+
+---
+
+## 🚀 第六阶段：和弦/调性算法真实歌曲诊断（Round 38-）
+
+> 用户体感：算法 baseline 全绿但**真实歌曲识别/定调仍不准**。Round 38 起转向"用具体歌曲做诊断"的产品方向。
+
+### Round 38 _2026-05-17_: song-fixture eval + 用 oracle 双重审计定位真因
+
+**用户反馈**
+> "和弦和歌曲定调感觉还是有问题呀，歌曲定调不准，和弦收集也不准"
+
+**任务**：找一首具体歌曲做测试例子，定位真实失败模式。
+
+**实现：`scripts/song-fixture-eval.mjs`**
+- 以经典走向 `vi-IV-I-V (Am-F-C-G) × 4 = 16 chord` 为 ground truth，调性 C major
+- 三场景对比：
+  - G1: 理想 3-音 voicing `[root, 3rd, 5th]` 单八度
+  - G2: 真实吉他开放/横按 voicing（含双八度根音）
+  - G3: 真实吉他 voicing + Oracle 假设的 chroma-histogram 代替 root-histogram 做 Krumhansl-Schmuckler key 推断
+- 每场景跑帧级模板匹配 + key 累积 + 输出混淆模式
+- `npm run eval:song` 触发
+
+**关键发现（与初始假设全部冲突）**
+
+| SNR | G1 (理想 voicing) | G2 (真实吉他) | G3 (chroma-hist) |
+|-----|---|---|---|
+| 20 dB | 100% / C major ✅ | 100% / C major ✅ | 100% / C major ✅ |
+| 0 dB | 81% / **A minor ❌** | 100% / C major ✅ | 100% / **E minor ❌** |
+
+**Oracle 第一次审计**（确认我的 voicing 假设）：
+- 我以为"3rd 比根音强"是因为谐波链 → **错**：实际是 voicing 物理上双八度
+- 我的脚本模板 `[1,1,1]` 与生产 `[1.0, 1.0, 0.5]` 不匹配，diagnostic 价值打折
+- 生产用 dB-scale + bass chroma + EMA，脚本用线性 magnitude → 真实运行时差异比脚本反映的小很多
+
+**Oracle 第二次审计**（读真实生产代码，给候选根因排序）：
+- ⭐ **G — Key-hint 反馈循环正反馈**：`ListenPage.tsx:212` 把 KeyDetector 推断结果反馈给 chord-detector 给 diatonic chord 加 10% 余弦相似度 boost → 错的 key 会"自我强化"
+- ⭐ **H — Krumhansl 用根音直方图而非 chroma 直方图**：Am-F-C-G 的根音集合 `{A,F,C,G}` 在 C major 和 A minor profile 下评分**结构性等价**（关系大小调），单看根音永远分不开
+- A (template shape) / C (HPS) / D (EMA) / B (dB conv) 等次级
+- J 烟雾弹：`MAX_CHORDS_PER_SECOND_LIVE=2` 卡 120BPM 一拍一和弦的歌曲（用户实际场景）
+
+**H 实验（5 行 fixture 改动证伪）**
+- 把 root-histogram 改成 chroma-histogram 重跑 → 反而推出 E 小调（更糟！）
+- 原因：合成 chroma 里 E pc 始终是峰值（吉他双八度 E3+E4 + 谐波串联）→ Krumhansl 永远投票 E
+- **H 假设在合成 fixture 上证伪**，但**也暴露了 fixture 与生产差距过大**（生产 dB-scale 会压缩这个峰值差）
+
+**结论 / Round 38 不动生产代码的原因**
+- Fixture 推不出与用户报告吻合的失败模式 → fixture 还不够真实
+- Oracle 给的 G/H 假设需要**真实音频 + 生产代码路径**才能可靠验证
+- 强行改 template 权重 / Krumhansl 输入是"猜着改"，违反 Karpathy 守则
+
+**Round 39 入口（明确下一步）**
+1. 在 ListenPage 加 diagnostic 模式：每帧 chroma + 候选 top-3 + key histogram 时序 → console.log
+2. 你（用户）实弹/外放一首歌，把 console 输出截图给我
+3. 用真实数据复盘 Oracle 排序的 G/H/J 哪个是真因
+4. 然后才动生产代码
+
+**测试**
+- `npm run eval:check` ✅（生产 baseline 不变）
+- `npm run build` ✅
+- `npm run eval:song` 新增，输出诊断报告
+
+**Karpathy 自检**
+- ✅ 拒绝"猜着改"算法（H 在 fixture 证伪 → 不动生产）
+- ✅ 显式列出 Oracle 假设排序而不是只挑一个
+- ✅ 把"用真实数据再判"作为 round39 入口而非本轮强推
+
