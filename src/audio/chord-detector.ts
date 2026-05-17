@@ -22,6 +22,16 @@ export interface ChordDetectResult {
   noteNames: string[];
   /** 当前帧检测到的频谱峰值数（用于权重计算） */
   peakCount: number;
+  /** 12 维归一化 chroma 向量（Round 10：供 KeyDetector 等下游消费） */
+  chroma: number[];
+  /** Round 16: 估计的调音偏移 (cents)，正值=偏高，约束在 ±50 之间 */
+  tuningOffsetCents?: number;
+  /** Round 17: 自适应噪声地板 (dB)，p10 估计，clamped 到 NOISE_FLOOR_MIN_DB */
+  noiseFloorDb?: number;
+  /** Round 17: 当前帧是否处于 onset 窗口内（最近一次能量跳变 ~150ms 内） */
+  isOnset?: boolean;
+  /** Round 19: top-K 候选和弦（按 adjusted 排序，confidence 仍为原始 sim） */
+  candidates?: { chord: ChordDef; confidence: number }[];
 }
 
 export type DetectorProfile = 'practice' | 'live';
@@ -91,6 +101,145 @@ function matchScore(detected: Set<number>, chordPcs: number[]): number {
   return 2 * recall * precision / (recall + precision);
 }
 
+// ---- Round 10/11: chroma + 程序化模板匹配 ----
+
+const CHROMA_MIN_FREQ = 70;
+const CHROMA_MAX_FREQ = 2000;
+const CHROMA_BASS_FREQ = 220;          // Round 12: 低频段截止，用于 bass chroma
+const CHROMA_MATCH_THRESHOLD = 0.5;
+const CHROMA_TOP_K = 4;
+const CHROMA_TOP_RATIO = 0.4;
+const CHROMA_EMA_ALPHA = 0.4;          // Round 12: EMA 平滑系数
+const BASS_BIAS = 0.5;                 // Round 12: 模板根音 bass 偏置
+
+// ---- Round 16: Tuning offset estimation ----
+const TUNING_EMA_ALPHA = 0.05;
+const TUNING_COLD_START_FRAMES = 30;
+const TUNING_MIN_PEAKS = 3;
+const TUNING_CLAMP = 50;
+
+// ---- Round 17: Adaptive noise floor & onset detection ----
+const ENERGY_HISTORY_LEN = 60;
+const NOISE_FLOOR_OFFSET_DB = 6;
+const NOISE_FLOOR_MIN_DB = -70;
+const NOISE_FLOOR_COLD_DB = -60;
+const NOISE_FLOOR_COLD_FRAMES = 60;
+const ONSET_STEP_DB = 8;
+const ONSET_WINDOW_MS = 150;
+
+// ---- Round 18: Key prior boost ----
+const KEY_PRIOR_BOOST = 0.10;
+
+// ---- Round 19: Top-K candidates ----
+const CANDIDATE_MIN_THRESHOLD = 0.40;
+const CANDIDATE_TOP_K = 3;
+
+type TemplateQuality = 'maj' | 'min' | '7' | 'maj7' | 'm7' | 'sus2' | 'sus4' | 'dim' | 'aug' | 'm7b5' | '6' | '9' | 'add9';
+
+// diatonic 集合（每个调的 7 个顺阶和弦：[pc 偏移 from key root, quality]）
+const DIATONIC_MAJOR: Array<[number, TemplateQuality]> = [
+  [0, 'maj'], [2, 'min'], [4, 'min'], [5, 'maj'], [7, 'maj'], [9, 'min'], [11, 'dim'],
+];
+const DIATONIC_MINOR: Array<[number, TemplateQuality]> = [
+  [0, 'min'], [2, 'dim'], [3, 'maj'], [5, 'min'], [7, 'min'], [8, 'maj'], [10, 'maj'],
+];
+
+const QUALITY_INTERVALS: Record<TemplateQuality, Array<[number, number]>> = {
+  // [interval_semitones, weight]
+  maj:   [[0, 1.0], [4, 1.0], [7, 0.5]],
+  min:   [[0, 1.0], [3, 1.0], [7, 0.5]],
+  '7':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.6]],
+  maj7:  [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.6]],
+  m7:    [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.6]],
+  sus2:  [[0, 1.0], [2, 0.9], [7, 0.5]],
+  sus4:  [[0, 1.0], [5, 0.9], [7, 0.5]],
+  dim:   [[0, 1.0], [3, 1.0], [6, 0.7]],
+  aug:   [[0, 1.0], [4, 1.0], [8, 0.7]],
+  // Round 21: 4 个新 quality（14 度在 buildVec 里 mod 12）
+  m7b5:  [[0, 1.0], [3, 1.0], [6, 0.7], [10, 0.6]],
+  '6':   [[0, 1.0], [4, 1.0], [7, 0.5], [9, 0.6]],
+  '9':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.6], [14, 0.5]],
+  add9:  [[0, 1.0], [4, 1.0], [7, 0.5], [14, 0.5]],
+};
+
+const QUALITY_TO_CHORD_DEF_QUALITY: Record<TemplateQuality, ChordDef['quality']> = {
+  maj: 'major', min: 'minor', '7': 'dom7', maj7: 'maj7', m7: 'min7',
+  sus2: 'sus', sus4: 'sus', dim: 'dim', aug: 'aug',
+  // Round 21: 最近邻映射到现有 quality 类型
+  m7b5: 'min7', '6': 'major', '9': 'dom7', add9: 'major',
+};
+
+function nameFor(rootPc: number, q: TemplateQuality): string {
+  const root = SHARP_NAMES[rootPc];
+  switch (q) {
+    case 'maj':  return root;
+    case 'min':  return root + 'm';
+    case '7':    return root + '7';
+    case 'maj7': return root + 'maj7';
+    case 'm7':   return root + 'm7';
+    case 'sus2': return root + 'sus2';
+    case 'sus4': return root + 'sus4';
+    case 'dim':  return root + 'dim';
+    case 'aug':  return root + 'aug';
+    case 'm7b5': return root + 'm7b5';
+    case '6':    return root + '6';
+    case '9':    return root + '9';
+    case 'add9': return root + 'add9';
+  }
+}
+
+interface TemplateEntry {
+  rootPc: number;
+  quality: TemplateQuality;
+  name: string;
+  vec: number[];
+  norm: number;
+}
+
+const CHORD_TEMPLATES_V2: TemplateEntry[] = (() => {
+  const qualities: TemplateQuality[] = ['maj', 'min', '7', 'maj7', 'm7', 'sus2', 'sus4', 'dim', 'aug', 'm7b5', '6', '9', 'add9'];
+  const out: TemplateEntry[] = [];
+  for (let rootPc = 0; rootPc < 12; rootPc++) {
+    for (const q of qualities) {
+      const vec = new Array<number>(12).fill(0);
+      for (const [semi, w] of QUALITY_INTERVALS[q]) {
+        vec[(rootPc + semi) % 12] = Math.max(vec[(rootPc + semi) % 12], w);
+      }
+      let sq = 0;
+      for (const v of vec) sq += v * v;
+      out.push({ rootPc, quality: q, name: nameFor(rootPc, q), vec, norm: Math.sqrt(sq) || 1 });
+    }
+  }
+  return out;
+})();
+
+// name → ChordDef 缓存（优先复用 CHORDS 表中的真实条目）
+const CHORDS_BY_NAME: Map<string, ChordDef> = (() => {
+  const m = new Map<string, ChordDef>();
+  for (const c of CHORDS) m.set(c.name, c);
+  return m;
+})();
+
+const VIRTUAL_CHORD_CACHE: Map<string, ChordDef> = new Map();
+
+function resolveChordDef(entry: TemplateEntry): ChordDef {
+  const real = CHORDS_BY_NAME.get(entry.name);
+  if (real) return real;
+  const cached = VIRTUAL_CHORD_CACHE.get(entry.name);
+  if (cached) return cached;
+  const virt: ChordDef = {
+    id: entry.name,
+    name: entry.name,
+    fullName: entry.name,
+    quality: QUALITY_TO_CHORD_DEF_QUALITY[entry.quality],
+    category: '开放和弦',
+    shapes: [{ frets: [-1, -1, -1, -1, -1, -1] }],
+    difficulty: 3,
+  };
+  VIRTUAL_CHORD_CACHE.set(entry.name, virt);
+  return virt;
+}
+
 export class ChordDetector {
   private audioCtx: AudioContext | null = null;
   private stream: MediaStream | null = null;
@@ -117,6 +266,19 @@ export class ChordDetector {
   private justCommittedThisFrame: { chord: ChordDef; confidence: number; durationMs: number } | null = null;
   private recentCommitsTs: number[] = [];
   private committedFlashUntil: number = 0;
+  // Round 12: chroma EMA 平滑状态
+  private smoothedChroma: number[] | null = null;
+  // Round 16: tuning offset 估计状态
+  private tuningOffsetCents: number = 0;
+  private tuningFrameCount: number = 0;
+  // Round 17: 自适应噪声地板 & onset 检测状态
+  private energyHistory: number[] = [];
+  private noiseFloorDb: number = NOISE_FLOOR_COLD_DB;
+  private prevMaxDb: number = -Infinity;
+  private lastOnsetTs: number = 0;
+  // Round 18: 外部传入的调性 hint（由 KeyDetector 反馈），仅用于模板匹配 prior 加成
+  private keyHintRoot: number | null = null;
+  private keyHintMode: 'major' | 'minor' | null = null;
 
   public setProfile(p: DetectorProfile): void {
     this.profile = p;
@@ -131,6 +293,15 @@ export class ChordDetector {
   public getProfile(): DetectorProfile { return this.profile; }
   public getSensitivity(): DetectorSensitivity { return this.sensitivity; }
 
+  /** Round 18: 由外部（KeyDetector）反馈稳定调性，传 null/null 即清除 hint */
+  public setKeyHint(root: number | null, mode: 'major' | 'minor' | null): void {
+    this.keyHintRoot = root;
+    this.keyHintMode = mode;
+  }
+  public getKeyHint(): { root: number | null; mode: 'major' | 'minor' | null } {
+    return { root: this.keyHintRoot, mode: this.keyHintMode };
+  }
+
   private resetState(): void {
     this.window = [];
     this.state = 'idle';
@@ -142,6 +313,15 @@ export class ChordDetector {
     this.exitBelowFrames = 0;
     this.silenceFrames = 0;
     this.recentCommitsTs = [];
+    this.smoothedChroma = null;
+    this.tuningOffsetCents = 0;
+    this.tuningFrameCount = 0;
+    this.energyHistory = [];
+    this.noiseFloorDb = NOISE_FLOOR_COLD_DB;
+    this.prevMaxDb = -Infinity;
+    this.lastOnsetTs = 0;
+    this.keyHintRoot = null;
+    this.keyHintMode = null;
   }
 
   async start(cb: (event: ChordDetectEvent) => void): Promise<void> {
@@ -182,10 +362,11 @@ export class ChordDetector {
     if (this.source) { try { this.source.disconnect(); } catch {} this.source = null; }
     if (this.analyser) { try { this.analyser.disconnect(); } catch {} this.analyser = null; }
     if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
+    this.smoothedChroma = null;
     this.resetState();
   }
 
-  /** ---- per-frame audio analysis (unchanged algorithm) ---- */
+  /** ---- per-frame audio analysis (Round 10/11/12: chroma + HPS + EMA + bass-biased 模板余弦) ---- */
   private analyzeFrame(): ChordDetectResult | null {
     if (!this.analyser || !this.audioCtx) return null;
     this.analyser.getFloatFrequencyData(this.freqData);
@@ -194,51 +375,189 @@ export class ChordDetector {
     for (let i = 0; i < this.freqBinCount; i++) {
       if (this.freqData[i] > maxDb) maxDb = this.freqData[i];
     }
-    if (maxDb < -50) return null;
+
+    // Round 17: 1) 维护能量历史
+    this.energyHistory.push(maxDb);
+    if (this.energyHistory.length > ENERGY_HISTORY_LEN) this.energyHistory.shift();
+
+    // 2) 自适应噪声地板（p10 over history，冷启动期用固定值）
+    if (this.energyHistory.length >= NOISE_FLOOR_COLD_FRAMES) {
+      const sorted = [...this.energyHistory].sort((a, b) => a - b);
+      const p10 = sorted[Math.floor(sorted.length * 0.1)];
+      this.noiseFloorDb = Math.max(NOISE_FLOOR_MIN_DB, p10);
+    } else {
+      this.noiseFloorDb = NOISE_FLOOR_COLD_DB;
+    }
+
+    // 3) 静音判定（双保险：噪底 + 绝对地板 -50dB）
+    //    注意 prevMaxDb 必须在 return null 路径也更新，否则从静音突然来声音时无法触发 onset
+    if (maxDb < this.noiseFloorDb + NOISE_FLOOR_OFFSET_DB || maxDb < -50) {
+      this.prevMaxDb = maxDb;
+      return null;
+    }
+
+    // 4) Onset 检测：相邻帧 dB 跳变超过阈值即记录时间戳
+    if (maxDb - this.prevMaxDb > ONSET_STEP_DB) {
+      this.lastOnsetTs = performance.now();
+    }
+    this.prevMaxDb = maxDb;
 
     const sampleRate = this.audioCtx.sampleRate;
     const binSize = sampleRate / this.analyser.fftSize;
-    const threshold = maxDb - 25;
-    const minBin = Math.floor(70 / binSize);
-    const maxBin = Math.min(this.freqBinCount - 1, Math.ceil(1400 / binSize));
+    const minBin = Math.max(1, Math.floor(CHROMA_MIN_FREQ / binSize));
+    const maxBin = Math.min(this.freqBinCount - 1, Math.ceil(CHROMA_MAX_FREQ / binSize));
 
-    const peaks: { freq: number; db: number }[] = [];
-    for (let i = minBin + 1; i < maxBin - 1; i++) {
-      const db = this.freqData[i];
-      if (db > threshold && db > this.freqData[i - 1] && db > this.freqData[i + 1]) {
-        const alpha = this.freqData[i - 1];
-        const beta = this.freqData[i];
-        const gamma = this.freqData[i + 1];
-        const p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma || 1);
-        const freq = (i + p) * binSize;
-        if (freq >= 70 && freq <= 1400) peaks.push({ freq, db });
+    // 步骤 A: 累加 chromaRaw + bassChroma（低频段 < CHROMA_BASS_FREQ 单独累计一份）
+    // Round 16: 同时收集 local-max 峰值（用于 tuning offset 估计），并用上一帧的 tuningOffsetCents 修正 pc
+    const chromaRaw = new Array<number>(12).fill(0);
+    const bassChroma = new Array<number>(12).fill(0);
+    const peakCandidates: { freq: number; amp: number }[] = [];
+    const tuneShift = this.tuningOffsetCents / 100;
+    for (let i = minBin; i <= maxBin; i++) {
+      const freq = (i + 0.5) * binSize;
+      if (freq < CHROMA_MIN_FREQ || freq > CHROMA_MAX_FREQ) continue;
+      const db = Math.max(this.freqData[i], -80);
+      const amp = Math.pow(10, db / 20);
+      // local max 判定（与左右邻居比 db，更稳定）
+      if (i > minBin && i < maxBin && this.freqData[i] > this.freqData[i - 1] && this.freqData[i] > this.freqData[i + 1]) {
+        peakCandidates.push({ freq, amp });
+      }
+      const midi = 12 * Math.log2(freq / 440) + 69 - tuneShift;
+      const pc = ((Math.round(midi) % 12) + 12) % 12;
+      chromaRaw[pc] += amp;
+      if (freq < CHROMA_BASS_FREQ) bassChroma[pc] += amp;
+    }
+
+    // Round 16: 取 top-6 峰值，过滤 amp < max*0.2 弱峰 → 估计 cents 偏差（EMA + median）
+    if (peakCandidates.length > 0) {
+      peakCandidates.sort((a, b) => b.amp - a.amp);
+      const top = peakCandidates.slice(0, 6);
+      const ampThr = top[0].amp * 0.2;
+      const topPeakFreqs = top.filter(p => p.amp >= ampThr).map(p => p.freq);
+
+      this.tuningFrameCount++;
+      if (this.tuningFrameCount > TUNING_COLD_START_FRAMES && topPeakFreqs.length >= TUNING_MIN_PEAKS) {
+        const offsets: number[] = [];
+        for (const f of topPeakFreqs.slice(0, 4)) {
+          const m = 12 * Math.log2(f / 440) + 69;
+          const cents = (m - Math.round(m)) * 100;
+          offsets.push(cents);
+        }
+        offsets.sort((a, b) => a - b);
+        const median = offsets.length % 2
+          ? offsets[(offsets.length - 1) >> 1]
+          : (offsets[offsets.length / 2 - 1] + offsets[offsets.length / 2]) / 2;
+        const next = TUNING_EMA_ALPHA * median + (1 - TUNING_EMA_ALPHA) * this.tuningOffsetCents;
+        this.tuningOffsetCents = Math.max(-TUNING_CLAMP, Math.min(TUNING_CLAMP, next));
       }
     }
 
-    if (peaks.length < 2) return null;
+    // 步骤 B: HPS 轻量抑制——减去完全五度 1/3 + 大三度 0.20（Round 11：抑制大三泛音）
+    const chroma = chromaRaw.map((v, pc) =>
+      Math.max(0, v - (chromaRaw[(pc + 7) % 12] * 0.33 + chromaRaw[(pc + 4) % 12] * 0.20))
+    );
 
-    peaks.sort((a, b) => b.db - a.db);
-    const topPeaks = peaks.slice(0, 12);
-    const pcSet = new Set<number>();
-    for (const p of topPeaks) pcSet.add(freqToPc(p.freq));
-    const detectedPcs = [...pcSet];
+    // 步骤 B+: EMA 平滑（Round 12）
+    if (!this.smoothedChroma || this.smoothedChroma.length !== 12) {
+      this.smoothedChroma = chroma.slice();
+    } else {
+      for (let i = 0; i < 12; i++) {
+        this.smoothedChroma[i] = CHROMA_EMA_ALPHA * chroma[i] + (1 - CHROMA_EMA_ALPHA) * this.smoothedChroma[i];
+      }
+    }
+    const smoothed = this.smoothedChroma;
+
+    // 步骤 C: 归一化 smoothed → chromaFinal
+    let maxS = 0;
+    for (let i = 0; i < 12; i++) if (smoothed[i] > maxS) maxS = smoothed[i];
+    if (maxS < 1e-6) return null;
+    const chromaFinal = smoothed.map(v => v / maxS);
+
+    // 归一化 bassChroma（独立归一）
+    let bassMax = 0;
+    for (let i = 0; i < 12; i++) if (bassChroma[i] > bassMax) bassMax = bassChroma[i];
+    const bassNorm = bassMax > 1e-6 ? bassChroma.map(v => v / bassMax) : new Array<number>(12).fill(0);
+
+    // detectedPcs：chromaFinal top-K 且 >= max * ratio
+    const indexed = chromaFinal.map((v, pc) => ({ v, pc }))
+      .sort((a, b) => b.v - a.v)
+      .slice(0, CHROMA_TOP_K)
+      .filter(x => x.v >= CHROMA_TOP_RATIO);
+    const detectedPcs = indexed.map(x => x.pc);
     const noteNames = detectedPcs.map(pc => SHARP_NAMES[pc]);
 
-    let bestChord: ChordDef | null = null;
-    let bestScore = 0;
-    for (const chord of CHORDS) {
-      const cPcs = chordPitchClasses(chord);
-      const score = matchScore(pcSet, cPcs);
-      if (score > bestScore) { bestScore = score; bestChord = chord; }
-    }
-    if (bestScore < 0.45) bestChord = null;
+    // 步骤 D: 模板余弦匹配 + bass 偏置（Round 12）+ key prior boost（Round 18）
+    let chromaSq = 0;
+    for (const v of chromaFinal) chromaSq += v * v;
+    const chromaNorm = Math.sqrt(chromaSq) || 1;
 
+    // Round 18: 预计算 diatonic 集合
+    let diatonicSet: Set<string> | null = null;
+    if (this.keyHintRoot !== null && this.keyHintMode !== null) {
+      const intervals = this.keyHintMode === 'major' ? DIATONIC_MAJOR : DIATONIC_MINOR;
+      diatonicSet = new Set();
+      for (const [offset, q] of intervals) {
+        const pc = (this.keyHintRoot + offset) % 12;
+        diatonicSet.add(`${pc}-${q}`);
+      }
+    }
+
+    let bestEntry: TemplateEntry | null = null;
+    let bestSim = 0;       // 原始余弦相似度，用于阈值判定 + confidence
+    let bestAdjusted = 0;  // 含 key prior 的，用于排序
+    // Round 19: 收集所有 hits 用于 top-K 候选输出
+    const hits: Array<{ tpl: TemplateEntry; sim: number; adjusted: number }> = [];
+    for (const tpl of CHORD_TEMPLATES_V2) {
+      // 对模板根音那一维做 (1 + BASS_BIAS * bassNorm[rootPc]) 偏置
+      const rootBoost = 1 + BASS_BIAS * bassNorm[tpl.rootPc];
+      let dot = 0, tplSq = 0;
+      for (let i = 0; i < 12; i++) {
+        const biased = i === tpl.rootPc ? tpl.vec[i] * rootBoost : tpl.vec[i];
+        dot += chromaFinal[i] * biased;
+        tplSq += biased * biased;
+      }
+      const sim = dot / (chromaNorm * (Math.sqrt(tplSq) || 1));
+      const adjusted = (diatonicSet && diatonicSet.has(`${tpl.rootPc}-${tpl.quality}`))
+        ? sim * (1 + KEY_PRIOR_BOOST)
+        : sim;
+      hits.push({ tpl, sim, adjusted });
+      if (adjusted > bestAdjusted) {
+        bestAdjusted = adjusted;
+        bestSim = sim;
+        bestEntry = tpl;
+      }
+    }
+    // 注意：阈值判定 + confidence 都用原始 sim，不让 prior 把弱信号拉过线
+    const bestChord: ChordDef | null =
+      bestEntry && bestSim >= CHROMA_MATCH_THRESHOLD ? resolveChordDef(bestEntry) : null;
+
+    // Round 19: top-K 候选（按 adjusted 排序，confidence 仍报原始 sim，按 chord.id 去重）
+    // 用 continue 而非 break：hits 按 adjusted 降序，但 sim 不严格单调（调内项 prior 抬高后 sim 可能偏低）
+    hits.sort((a, b) => b.adjusted - a.adjusted);
+    const candidates: { chord: ChordDef; confidence: number }[] = [];
+    const seenIds = new Set<string>();
+    for (const h of hits) {
+      if (candidates.length >= CANDIDATE_TOP_K) break;
+      if (h.sim < CANDIDATE_MIN_THRESHOLD) continue;
+      const cd = resolveChordDef(h.tpl);
+      if (seenIds.has(cd.id)) continue;
+      seenIds.add(cd.id);
+      candidates.push({ chord: cd, confidence: h.sim });
+    }
+
+    const nowTs = performance.now();
+    const isOnset = nowTs - this.lastOnsetTs < ONSET_WINDOW_MS;
     return {
       detectedPcs,
       chord: bestChord,
-      confidence: bestScore,
+      confidence: bestSim,
       noteNames,
-      peakCount: topPeaks.length,
+      peakCount: detectedPcs.length,
+      chroma: chromaFinal,
+      tuningOffsetCents: this.tuningOffsetCents,
+      noiseFloorDb: this.noiseFloorDb,
+      isOnset,
+      candidates,
     };
   }
 

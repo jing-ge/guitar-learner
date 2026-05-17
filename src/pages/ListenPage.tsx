@@ -88,6 +88,14 @@ function LiveChordRecognizer() {
   const [sensitivity, setSensitivity] = useState<DetectorSensitivity>('normal');
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [saveName, setSaveName] = useState('');
+  // Round 19: top-K 候选展示
+  const [candidates, setCandidates] = useState<{ chord: ChordDef; confidence: number }[]>([]);
+  // Round 22: 基于和弦根音直方图推断调性，反馈给识别器
+  const [inferredKey, setInferredKey] = useState<{ root: number; mode: 'major' | 'minor'; name: string } | null>(null);
+  const chordRootHistogramRef = useRef<number[]>(new Array(12).fill(0));
+  const totalChordsRef = useRef(0);
+  const lastInferredKeyRef = useRef<string | null>(null);
+  const lastPushedHintRef = useRef<string | null>(null);
   const startRef = useRef(0);
   const historyRef = useRef<ChordEntry[]>([]);
   const flashTimerRef = useRef<number | null>(null);
@@ -111,8 +119,14 @@ function LiveChordRecognizer() {
     setProgress(0);
     setState('idle');
     setHistory([]);
+    setCandidates([]);
     historyRef.current = [];
     startRef.current = Date.now();
+    chordRootHistogramRef.current = new Array(12).fill(0);
+    totalChordsRef.current = 0;
+    lastInferredKeyRef.current = null;
+    lastPushedHintRef.current = null;
+    setInferredKey(null);
 
     chordDetector.setProfile('live');
     chordDetector.setSensitivity(sensitivity);
@@ -135,6 +149,13 @@ function LiveChordRecognizer() {
         setActiveConf(0);
       }
 
+      // Round 19: 同步 top-K 候选（每帧更新）
+      if (event.raw?.candidates) {
+        setCandidates(event.raw.candidates);
+      } else {
+        setCandidates([]);
+      }
+
       if (event.justCommitted) {
         const ev = event.justCommitted;
         vibrate(10);
@@ -153,6 +174,48 @@ function LiveChordRecognizer() {
           if (next.length > 50) return next.slice(next.length - 50);
           return next;
         });
+
+        // Round 22: 累积和弦根音直方图 → K-S 推断调性 → 反馈给识别器
+        const rootPc = parseRootPc(ev.chord.id);
+        if (rootPc >= 0) {
+          chordRootHistogramRef.current[rootPc]++;
+          totalChordsRef.current++;
+
+          if (totalChordsRef.current >= 5) {
+            const histogram = chordRootHistogramRef.current;
+            const majorProfile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+            const minorProfile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+            let bestScore = -Infinity;
+            let bestRoot = 0;
+            let bestMode: 'major' | 'minor' = 'major';
+            for (let root = 0; root < 12; root++) {
+              let majCorr = 0, minCorr = 0;
+              for (let i = 0; i < 12; i++) {
+                const v = histogram[(root + i) % 12];
+                majCorr += v * majorProfile[i];
+                minCorr += v * minorProfile[i];
+              }
+              if (majCorr > bestScore) { bestScore = majCorr; bestRoot = root; bestMode = 'major'; }
+              if (minCorr > bestScore) { bestScore = minCorr; bestRoot = root; bestMode = 'minor'; }
+            }
+            const SHARP_NAMES_LOCAL2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+            const inferredId = `${bestRoot}-${bestMode}`;
+            const name = `${SHARP_NAMES_LOCAL2[bestRoot]} ${bestMode === 'major' ? '大调' : '小调'}`;
+            const newInferred = { root: bestRoot, mode: bestMode, name };
+
+            // 一致性二次确认：本次推断与上次一致才真正推给识别器
+            if (lastInferredKeyRef.current === inferredId) {
+              if (lastPushedHintRef.current !== inferredId) {
+                chordDetector.setKeyHint(bestRoot, bestMode);
+                lastPushedHintRef.current = inferredId;
+                setInferredKey(newInferred);
+              }
+            } else {
+              lastInferredKeyRef.current = inferredId;
+              // 不立即推，等下次确认
+            }
+          }
+        }
       }
     });
     setListening(true);
@@ -160,9 +223,16 @@ function LiveChordRecognizer() {
 
   const stop = useCallback(() => {
     chordDetector.stop();
+    chordDetector.setKeyHint(null, null);
+    chordRootHistogramRef.current = new Array(12).fill(0);
+    totalChordsRef.current = 0;
+    lastInferredKeyRef.current = null;
+    lastPushedHintRef.current = null;
+    setInferredKey(null);
     setListening(false);
     setState('idle');
     setProgress(0);
+    setCandidates([]);
     if (startRef.current > 0) {
       const elapsedSec = Math.round((Date.now() - startRef.current) / 1000);
       const items = historyRef.current;
@@ -186,6 +256,15 @@ function LiveChordRecognizer() {
   const barClass = 'stability-bar' + (committedFlash ? ' committed' : state === 'confirmed' || state === 'committed' ? ' confirmed' : '');
   const nameClass = 'live-chord-name ' + (committedFlash ? 'committed' : state === 'confirmed' || state === 'committed' ? 'confirmed' : 'candidate');
 
+  // 识别质量评级
+  const rating = (() => {
+    if (state === 'committed' && activeConf >= 0.75) return 'A';
+    if (state === 'committed') return 'B';
+    if (state === 'confirmed' && activeConf >= 0.7) return 'B';
+    return 'C';
+  })();
+  const ratingColor = rating === 'A' ? 'var(--success)' : rating === 'B' ? 'var(--brand)' : 'var(--text-dim)';
+
   return (
     <>
       <MicPermissionState state={micState} onRetry={start} />
@@ -204,6 +283,10 @@ function LiveChordRecognizer() {
           <>
             <div className={nameClass}>{activeChord.name}</div>
             <div className="tuner-freq" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{
+                display: 'inline-block', padding: '1px 8px', borderRadius: 10,
+                background: ratingColor, color: '#fff', fontSize: 11, fontWeight: 700,
+              }}>识别{rating}</span>
               <span>{activeChord.fullName} · {Math.round(activeConf * 100)}%</span>
               <span className={barClass} aria-label="稳定度">
                 <span className="fill" style={{ width: `${Math.round(progress * 100)}%` }} />
@@ -212,6 +295,15 @@ function LiveChordRecognizer() {
                 hold {Math.round(activeHeldMs)}ms
               </span>
             </div>
+            {(state === 'committed' || state === 'confirmed') && candidates.length > 1 && (
+              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+                次选: {candidates
+                  .filter(c => c.chord.id !== activeChord.id)
+                  .slice(0, 2)
+                  .map(c => `${c.chord.name} (${Math.round(c.confidence * 100)}%)`)
+                  .join(' · ')}
+              </div>
+            )}
           </>
         ) : listening ? (
           <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
@@ -245,6 +337,11 @@ function LiveChordRecognizer() {
             <div style={{ marginTop: 10, fontSize: 14, fontWeight: 600, letterSpacing: 1, color: 'var(--text)' }}>
               {history.map(h => h.name).join(' → ')}
             </div>
+            {inferredKey && (
+              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 8 }}>
+                推断调性: {inferredKey.name}（已反馈给识别器，提升后续调内和弦准确度）
+              </div>
+            )}
             <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => {
               const text = history.map(h => h.name).join(' → ');
               try { navigator.clipboard?.writeText(text); } catch {}
@@ -310,15 +407,76 @@ function LiveChordRecognizer() {
 }
 
 /* ================ 听曲定调 ================ */
+const SHARP_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_TO_SHARP_LOCAL: Record<string,string> = { Bb:'A#', Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#' };
+
+function parseRootPc(id: string): number {
+  if (!id) return -1;
+  let token = id[0];
+  if (id[1] === '#' || id[1] === 'b') token = id.slice(0, 2);
+  if (token.length === 2 && token[1] === 'b') {
+    const mapped = FLAT_TO_SHARP_LOCAL[token];
+    if (!mapped) return -1;
+    token = mapped;
+  }
+  return SHARP_NAMES_LOCAL.indexOf(token);
+}
+
+function addChordEvidence(prev: number[], root: number, quality: string): number[] {
+  const out = prev.slice();
+  const isMajor = quality === 'major' || quality === 'maj7' || quality === 'sus' || quality === 'aug';
+  const isMinor = quality === 'minor' || quality === 'min7' || quality === 'dim';
+  const isDom7  = quality === 'dom7';
+
+  // 给定和弦 root r：r 充当 major key 的 I/IV/V 的 key root：
+  //   I = r,   IV 来自 key root r-5 = r+7 mod 12,   V 来自 key root r-7 = r+5 mod 12
+  if (isMajor) {
+    out[root] += 1.0;                       // I
+    out[(root + 7) % 12] += 1.0;            // IV
+    out[(root + 5) % 12] += 1.0;            // V
+    // major chord 在自然小调里作 III/VI/VII：
+    //   III: key root = r + 9, VI: r + 4, VII: r + 2
+    out[12 + ((root + 9) % 12)] += 0.5;
+    out[12 + ((root + 4) % 12)] += 0.5;
+    out[12 + ((root + 2) % 12)] += 0.5;
+  }
+  if (isMinor) {
+    // minor chord r 在 major key 里作 ii/iii/vi：
+    //   ii: r + 10, iii: r + 8, vi: r + 3
+    out[(root + 10) % 12] += 0.7;
+    out[(root + 8) % 12]  += 0.7;
+    out[(root + 3) % 12]  += 0.7;
+    // minor chord r 自然小调 i：minor key root = r
+    out[12 + root] += 1.0;
+  }
+  if (isDom7) {
+    // V7 强烈指向 major key root = r + 5
+    out[(root + 5) % 12] += 1.2;
+    // 同时给 minor key root = r + 5（次属和弦也常见）
+    out[12 + ((root + 5) % 12)] += 0.6;
+    // dom7 本身也含 major triad
+    out[root] += 0.4;
+    out[(root + 7) % 12] += 0.4;
+  }
+  return out;
+}
+
 function KeyDetector() {
   const [listening, setListening] = useState(false);
   const [pcCounts, setPcCounts] = useState<number[]>(new Array(12).fill(0));
+  const [chordEvidence, setChordEvidence] = useState<number[]>(() => new Array(24).fill(0));
+  const [chordEvidenceCount, setChordEvidenceCount] = useState(0);
+  const [dominantChordCounts, setDominantChordCounts] = useState<Record<string, number>>({});
   const [elapsed, setElapsed] = useState(0);
   const [micState, setMicState] = useState<MicPermState>('idle');
   const timerRef = useRef<number | null>(null);
   const startRef = useRef(0);
   const lastSampleTsRef = useRef(0);
   const bestKeyRef = useRef<{ root: number; mode: 'major' | 'minor'; score: number; name: string } | null>(null);
+  // Round 18: 稳定调性 → 反馈给 chordDetector 作为 prior
+  const stableKeyRef = useRef<{ key: string; since: number } | null>(null);
+  const lastPushedHintRef = useRef<string | null>(null);
+  const [hintPushed, setHintPushed] = useState<string | null>(null);
 
   const start = useCallback(async () => {
     setMicState('requesting');
@@ -329,6 +487,9 @@ function KeyDetector() {
     }
     setMicState('granted');
     setPcCounts(new Array(12).fill(0));
+    setChordEvidence(new Array(24).fill(0));
+    setChordEvidenceCount(0);
+    setDominantChordCounts({});
     setElapsed(0);
     startRef.current = Date.now();
     lastSampleTsRef.current = 0;
@@ -338,28 +499,46 @@ function KeyDetector() {
 
     chordDetector.setProfile('live');
     await chordDetector.start((event: ChordDetectEvent) => {
+      // justCommitted 不受节流影响，独立累积和弦证据
+      if (event.justCommitted) {
+        const { chord } = event.justCommitted;
+        setDominantChordCounts(prev => ({
+          ...prev,
+          [chord.name]: (prev[chord.name] || 0) + 1,
+        }));
+        const rootPc = parseRootPc(chord.id);
+        if (rootPc >= 0) {
+          setChordEvidence(prev => addChordEvidence(prev, rootPc, chord.quality));
+          setChordEvidenceCount(c => c + 1);
+        }
+      }
+
       const raw = event.raw;
       if (!raw || raw.detectedPcs.length === 0) return;
 
-      // 节流：200ms 采一次
+      // 节流：200ms 采一次（仅影响 chroma 累计）
       const now = performance.now();
       if (now - lastSampleTsRef.current < 200) return;
       lastSampleTsRef.current = now;
 
-      // 只取前 4 强 pc，弱化"很多 pc 同时爆"的瞬态
-      const topPcs = raw.detectedPcs.slice(0, 4);
-      const weight = 1 / Math.min(raw.peakCount || 4, 6);
-      setPcCounts(prev => {
-        const next = [...prev];
-        for (const pc of topPcs) next[pc] += weight;
-        return next;
-      });
+      // 累加归一化 chroma（[0,1]），自带强度，不再除以 peakCount
+      if (raw.chroma && raw.chroma.length === 12) {
+        setPcCounts(prev => {
+          const next = [...prev];
+          for (let pc = 0; pc < 12; pc++) next[pc] += raw.chroma[pc];
+          return next;
+        });
+      }
     });
     setListening(true);
   }, []);
 
   const stop = useCallback(() => {
     chordDetector.stop();
+    chordDetector.setKeyHint(null, null);
+    lastPushedHintRef.current = null;
+    stableKeyRef.current = null;
+    setHintPushed(null);
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     setListening(false);
     if (startRef.current > 0) {
@@ -390,6 +569,7 @@ function KeyDetector() {
   const maxCount = Math.max(...pcCounts, 1);
 
   const keyScores: { root: number; mode: 'major' | 'minor'; score: number; name: string }[] = [];
+  const LAMBDA = 0.15;
   for (let root = 0; root < 12; root++) {
     let majCorr = 0, minCorr = 0;
     for (let i = 0; i < 12; i++) {
@@ -398,15 +578,41 @@ function KeyDetector() {
       minCorr += rotated * minorProfile[i];
     }
     keyScores.push(
-      { root, mode: 'major' as const, score: majCorr, name: `${SHARP_NAMES[root]} 大调` },
-      { root, mode: 'minor' as const, score: minCorr, name: `${SHARP_NAMES[root]} 小调` },
+      { root, mode: 'major' as const, score: majCorr + LAMBDA * chordEvidence[root], name: `${SHARP_NAMES[root]} 大调` },
+      { root, mode: 'minor' as const, score: minCorr + LAMBDA * chordEvidence[12 + root], name: `${SHARP_NAMES[root]} 小调` },
     );
   }
   keyScores.sort((a, b) => b.score - a.score);
   const bestKey = totalCounts > 5 ? keyScores[0] : null;
   const top3 = keyScores.slice(0, 3);
 
+  // 置信度评级：top1/top2 比值越大越自信
+  const top1Score = keyScores[0]?.score || 0;
+  const top2Score = keyScores[1]?.score || 0;
+  const ratio = top2Score > 0 ? top1Score / top2Score : Infinity;
+  const keyConfidenceRating = bestKey ? (ratio > 1.20 ? 'A' : ratio > 1.08 ? 'B' : 'C') : 'C';
+  const keyRatingColor = keyConfidenceRating === 'A' ? 'var(--success)' : keyConfidenceRating === 'B' ? 'var(--brand)' : 'var(--text-dim)';
+
   useEffect(() => { bestKeyRef.current = bestKey; }, [bestKey]);
+
+  // Round 18: 检测到的调性稳定 ≥ 3s 后，反馈给 chordDetector 作为 prior
+  useEffect(() => {
+    if (!bestKey) {
+      stableKeyRef.current = null;
+      return;
+    }
+    const keyId = `${bestKey.root}-${bestKey.mode}`;
+    const now = Date.now();
+    if (!stableKeyRef.current || stableKeyRef.current.key !== keyId) {
+      stableKeyRef.current = { key: keyId, since: now };
+      return;
+    }
+    if (now - stableKeyRef.current.since >= 3000 && lastPushedHintRef.current !== keyId) {
+      chordDetector.setKeyHint(bestKey.root, bestKey.mode);
+      lastPushedHintRef.current = keyId;
+      setHintPushed(keyId);
+    }
+  }, [bestKey]);
 
   return (
     <>
@@ -423,7 +629,13 @@ function KeyDetector() {
       <div className="tuner-result" style={{ minHeight: 80 }}>
         {bestKey ? (
           <>
-            <div className="tuner-note" style={{ color: 'var(--success)' }}>{bestKey.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <div className="tuner-note" style={{ color: 'var(--success)' }}>{bestKey.name}</div>
+              <span style={{
+                display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                background: keyRatingColor, color: '#fff', fontSize: 11, fontWeight: 700,
+              }}>{keyConfidenceRating}</span>
+            </div>
             <div className="tuner-freq">最可能的调性</div>
           </>
         ) : totalCounts > 0 ? (
@@ -439,6 +651,14 @@ function KeyDetector() {
       {totalCounts > 5 && (
         <div className="card">
           <h2>候选调性</h2>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4, marginBottom: 8 }}>
+            证据：chroma · 已识别 {chordEvidenceCount} 个和弦
+          </div>
+          {hintPushed && (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, marginBottom: 8 }}>
+              已将该调反馈给和弦识别器（提升调内和弦识别度）
+            </div>
+          )}
           {top3.map((k, i) => (
             <div key={`${k.root}-${k.mode}`} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <span style={{ fontSize: 14, fontWeight: i === 0 ? 700 : 400, color: i === 0 ? 'var(--success)' : 'var(--text)', minWidth: 90 }}>{k.name}</span>
@@ -447,6 +667,23 @@ function KeyDetector() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 主导和弦 */}
+      {Object.keys(dominantChordCounts).length > 0 && (
+        <div className="card">
+          <h2>主导和弦</h2>
+          <div style={{ fontSize: 14 }}>
+            {Object.entries(dominantChordCounts)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 3)
+              .map(([name, count]) => `${name} ×${count}`)
+              .join(', ')}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+            已识别 {Object.values(dominantChordCounts).reduce((a, b) => a + b, 0)} 个和弦
+          </div>
         </div>
       )}
 

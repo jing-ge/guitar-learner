@@ -7,7 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/inline-dist.mjs",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "eval": "node scripts/eval-chord-detector.mjs",
+    "eval:update": "node scripts/eval-chord-detector.mjs --update-baseline",
+    "eval:check": "node scripts/eval-chord-detector.mjs --check-baseline"
   },
   "dependencies": {
     "react": "^18.3.1",
