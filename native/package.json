@@ -8,7 +8,7 @@
     "ios": "expo run:ios",
     "prebuild": "node scripts/copy-web.js && expo prebuild",
     "build:web": "cd .. && npx vite build && cd native",
-    "eas-build-pre-install": "cd .. && npm ci && npm run build && cd native && node scripts/copy-web.js"
+    "eas-build-pre-install": "cd .. && npm ci && npm run build:apk && cd native && node scripts/copy-web.js"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
