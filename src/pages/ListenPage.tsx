@@ -23,6 +23,40 @@ type Phase = 'idle' | 'requesting' | 'recording' | 'analyzing' | 'done' | 'error
 const DURATION_OPTIONS = [10, 20, 30] as const;
 type Duration = typeof DURATION_OPTIONS[number];
 
+/**
+ * Round 48: WebAssembly 能力检测（防 Expo WebView file:// 下 dynamic import 失败）
+ *
+ * 真实降级条件:
+ *   - WebAssembly 全局不可用（极老浏览器）
+ *   - BigInt 不支持（Essentia WASM 依赖）
+ *
+ * 不再根据 UA 字符串判断 Expo —— 让真实功能检测说话。
+ */
+function isEssentiaSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (typeof WebAssembly === 'undefined') return false;
+  if (typeof BigInt === 'undefined') return false;
+  return true;
+}
+
+/**
+ * Round 48: MediaRecorder mimeType 兼容检测
+ * 优先级: webm/opus（Chrome/Firefox/Android）→ mp4（iOS Safari 14+）→ 浏览器默认
+ */
+function pickMimeType(): string | undefined {
+  if (typeof MediaRecorder === 'undefined') return undefined;
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/mp4;codecs=mp4a.40.2',
+  ];
+  for (const t of candidates) {
+    try { if (MediaRecorder.isTypeSupported(t)) return t; } catch {}
+  }
+  return undefined;
+}
+
 export default function ListenPage() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [duration, setDuration] = useState<Duration>(20);
@@ -43,12 +77,30 @@ export default function ListenPage() {
   const chunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef(0);
 
+  // Round 48: 环境能力检测（一次性）
+  const supported = useMemo(() => isEssentiaSupported(), []);
+
   // 进入页面时静默预热 Essentia WASM（不阻塞，仅缩短首次分析延迟）
   useEffect(() => {
+    if (!supported) return;
     let cancelled = false;
-    warmupEngine().then(() => { if (!cancelled) setEngineReady(true); }).catch(() => {});
+    warmupEngine().then(() => { if (!cancelled) setEngineReady(true); }).catch(err => {
+      console.warn('[round48] essentia warmup failed:', err);
+    });
     return () => { cancelled = true; };
-  }, []);
+  }, [supported]);
+
+  // Round 48: 切后台兜底 — 录音中切 tab/锁屏，主动 stop，让 onstop 走正常分析链
+  useEffect(() => {
+    const handleVis = () => {
+      if (document.visibilityState === 'hidden' && phase === 'recording') {
+        console.log('[round48] page hidden during recording → auto-stop');
+        try { mediaRecorderRef.current?.stop(); } catch {}
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => document.removeEventListener('visibilitychange', handleVis);
+  }, [phase]);
 
   // 卸载清理
   useEffect(() => () => { cleanup(); }, []);
@@ -133,8 +185,10 @@ export default function ListenPage() {
     };
     loop();
 
-    // 启动 MediaRecorder
-    const recorder = new MediaRecorder(stream);
+    // 启动 MediaRecorder — Round 48: 显式选 mimeType 防 iOS/Android 容器不兼容
+    const mimeType = pickMimeType();
+    const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    console.log('[round48] MediaRecorder mimeType:', recorder.mimeType);
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = async () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -228,6 +282,19 @@ export default function ListenPage() {
         </p>
       </div>
 
+      {/* Round 48: 不支持 WebAssembly 的环境降级提示（如某些 Expo WebView 旧版本） */}
+      {!supported && (
+        <div className="card" style={{ borderColor: 'var(--brand)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand)' }}>当前环境不支持离线识别</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.6 }}>
+            听歌识别功能依赖 WebAssembly。请在主流浏览器（Chrome / Safari / Firefox / Edge）中打开本 App。
+            <br />
+            其他功能（调音器、和弦练习、节拍器等）不受影响。
+          </div>
+        </div>
+      )}
+
+      {supported && <>
       {/* 时长选择 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>录音时长</div>
@@ -318,6 +385,7 @@ export default function ListenPage() {
           ⚠️ 当前版本仅识别大三和弦/小三和弦（Cmaj7 会识别为 C，Am7 会识别为 Am）。
         </p>
       </div>
+      </>}
     </div>
   );
 }
@@ -444,12 +512,17 @@ function ChordTimeline({ beatChords, totalDuration }: { beatChords: BeatChord[];
 
   const lastEnd = beatChords[beatChords.length - 1]?.endSec || totalDuration;
   const total = Math.max(lastEnd, totalDuration, 1);
+  // Round 48: 统计被 key-aware snap 的段数
+  const snappedCount = beatChords.filter(b => b.snapped).length;
 
   return (
     <div className="card">
       <h2>🎵 节拍和弦时间线</h2>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
         {beatChords.length} 个 beat-aligned 和弦段（卡节拍）
+        {snappedCount > 0 && (
+          <span> · <span style={{ borderBottom: '1px dashed currentColor' }}>{snappedCount} 段</span>已按调性纠正</span>
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {/* 时间轴刻度 */}
@@ -489,8 +562,14 @@ function ChordTimeline({ beatChords, totalDuration }: { beatChords: BeatChord[];
                   borderRight: i < beatChords.length - 1 ? '1px solid rgba(255,255,255,0.15)' : 'none',
                   cursor: 'default',
                   opacity: bc.strength > 0.3 ? 1 : 0.5,
+                  // Round 48: snap 过的段加虚线下划线，让用户看到哪些是经过 key-aware 纠正的
+                  borderBottom: bc.snapped ? '2px dashed rgba(255,255,255,0.5)' : 'none',
                 }}
-                title={`${bc.chord} · ${bc.startSec.toFixed(2)}s → ${bc.endSec.toFixed(2)}s · 强度 ${(bc.strength * 100).toFixed(0)}%`}
+                title={
+                  bc.snapped
+                    ? `${bc.chord} (key-aware 纠正自 ${bc.originalChord}) · ${bc.startSec.toFixed(2)}s → ${bc.endSec.toFixed(2)}s · 强度 ${(bc.strength * 100).toFixed(0)}%`
+                    : `${bc.chord} · ${bc.startSec.toFixed(2)}s → ${bc.endSec.toFixed(2)}s · 强度 ${(bc.strength * 100).toFixed(0)}%`
+                }
               >
                 {widthPct > 4 ? bc.chord : ''}
               </div>

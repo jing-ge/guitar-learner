@@ -31,6 +31,81 @@ const WAV_PATH = process.argv[2] || '/tmp/glog/canon.wav';
 const EXPECTED_KEY = process.argv[3] || 'D';
 const EXPECTED_SCALE = process.argv[4] || 'major';
 
+// ========== Round 48 snap helpers (与 essentia-engine.ts 对齐) ==========
+const PC_NAMES_R48 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function parseChord(name) {
+  if (!name || name === 'N') return null;
+  let token = name[0];
+  let rest = name.slice(1);
+  if (rest[0] === '#' || rest[0] === 'b') { token = name.slice(0, 2); rest = name.slice(2); }
+  const rootPc = PC_NAMES_R48.indexOf(token);
+  if (rootPc < 0) return null;
+  const isMinor = rest === 'm' || rest === 'min';
+  return { rootPc, isMinor };
+}
+
+function formatChord(rootPc, isMinor) {
+  return PC_NAMES_R48[((rootPc % 12) + 12) % 12] + (isMinor ? 'm' : '');
+}
+
+function buildDiatonicSet(rootPc, scale) {
+  const out = new Set();
+  if (rootPc < 0) return out;
+  const r = ((rootPc % 12) + 12) % 12;
+  if (scale === 'major') {
+    out.add(formatChord(r, false));
+    out.add(formatChord((r + 2) % 12, true));
+    out.add(formatChord((r + 4) % 12, true));
+    out.add(formatChord((r + 5) % 12, false));
+    out.add(formatChord((r + 7) % 12, false));
+    out.add(formatChord((r + 9) % 12, true));
+    out.add(formatChord((r + 11) % 12, true));
+    out.add(formatChord((r + 10) % 12, false));  // bVII
+    out.add(formatChord((r + 5) % 12, true));    // iv
+  } else {
+    out.add(formatChord(r, true));
+    out.add(formatChord((r + 2) % 12, true));
+    out.add(formatChord((r + 3) % 12, false));
+    out.add(formatChord((r + 5) % 12, true));
+    out.add(formatChord((r + 7) % 12, true));
+    out.add(formatChord((r + 7) % 12, false));
+    out.add(formatChord((r + 8) % 12, false));
+    out.add(formatChord((r + 10) % 12, false));
+    out.add(formatChord(r, false));
+  }
+  return out;
+}
+
+function snapChord(bc, diatonicSet, _keyRootPc, _keyScale) {
+  const parsed = parseChord(bc.chord);
+  if (!parsed) return bc;
+  if (diatonicSet.has(bc.chord)) return bc;
+  if (bc.strength >= 0.6) return bc;
+  const parsedDiatonic = [...diatonicSet].map(name => ({ name, ...parseChord(name) }));
+  let best = null;
+  for (const d of parsedDiatonic) {
+    const rawDist = Math.abs(parsed.rootPc - d.rootPc);
+    const pcDist = Math.min(rawDist, 12 - rawDist);
+    const qualityPenalty = (parsed.isMinor === d.isMinor) ? 0 : 1.5;
+    const cost = pcDist + qualityPenalty;
+    if (!best || cost < best.cost) best = { name: d.name, cost };
+  }
+  if (!best || best.cost > 3) return bc;
+  return { ...bc, chord: best.name, snapped: true, originalChord: bc.chord };
+}
+
+function countTop6(arr) {
+  // 折叠相邻同根
+  const folded = [];
+  for (const bc of arr) {
+    if (folded.length === 0 || folded[folded.length - 1].chord !== bc.chord) folded.push(bc);
+  }
+  const counts = new Map();
+  for (const f of folded) counts.set(f.chord, (counts.get(f.chord) || 0) + 1);
+  return Object.fromEntries([...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6));
+}
+
 // ============== Helper: 读 wav → Float32 ==============
 function readWavToFloat32(filePath, targetSR = 44100) {
   const buffer = fs.readFileSync(filePath);
@@ -102,11 +177,22 @@ async function main() {
     }
 
     // 4. KeyExtractor
-    // signature: (audio, averageDetuningCorrection=true, frameSize=4096, hopSize=4096,
-    //   hpcpSize=12, maxFrequency=3500, maximumSpectralPeaks=60, minFrequency=25,
-    //   pcpThreshold=0.2, profileType='bgate', sampleRate=44100, spectralPeaksThreshold=0.0001,
-    //   tuningFrequency=440, weightType='cosine', windowType='hann')
     keyOut = essentia.KeyExtractor(audioVec);
+
+    // Round 48: 在 eval 脚本里应用 snapToDiatonic，对照 raw vs snap
+    const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const keyRootPc = PC_NAMES.indexOf(keyOut.key);
+    const diatonicSet = buildDiatonicSet(keyRootPc, keyOut.scale);
+    const rawTop6 = countTop6(beatChords);
+    if (keyRootPc >= 0 && keyOut.strength >= 0.5) {
+      beatChords = beatChords.map(bc => snapChord(bc, diatonicSet, keyRootPc, keyOut.scale));
+    }
+    const snappedTop6 = countTop6(beatChords);
+    console.log(`\n[Round 48] snap 前 Top 6: ${JSON.stringify(rawTop6)}`);
+    console.log(`[Round 48] snap 后 Top 6: ${JSON.stringify(snappedTop6)}`);
+    const snappedCount = beatChords.filter(b => b.snapped).length;
+    console.log(`[Round 48] 被 snap 的段数: ${snappedCount} / ${beatChords.length}`);
+    
 
     const elapsed = performance.now() - tAnalyze;
     console.log(`  ✓ analyze done - ${(elapsed / 1000).toFixed(2)}s\n`);

@@ -2211,3 +2211,71 @@ PRD 原计划用 PitchYinFFT 替换自研 YIN，但 Karpathy 自检后撤回：
 5. **删除 ListenPage.legacy.tsx**: 经过 1-2 轮稳定后删（git 历史保留）
 
 
+#### Round 48 _2026-05-18_: key-aware 后处理 + 和弦图谱跳转 + 移动端兼容修复
+
+**主线**：让 Round 47 的算法成果对用户**真正可用**。不再叠新功能，专注打磨。
+
+**A. snapToDiatonic key-aware 和弦后处理 (essentia-engine.ts +120 行)**
+
+在 Essentia `KeyExtractor` 输出调性后，对 `ChordsDetectionBeats` 的和弦序列做后处理：
+- 构造顺阶集合（七顺阶 + 常见借用：major key 含 bVII/iv，minor key 含 V/I picardy）
+- 对每个 beat 和弦：若在顺阶内 → 保留；若 strength ≥ 0.6 → 保留（高置信不动）；否则在顺阶里找最近（pc 距离 ≤ 2 + 跨 quality 罚 1.5）替换
+- snap 后的段加 `snapped: true` + `originalChord` 字段供 UI 显示
+
+**实测效果（snap 前 → snap 后 Top 6）**
+
+| 曲目 | snap 段数 | 改善 |
+|------|------|------|
+| 卡农 D 大调 | 37/475 (7.8%) | Top 6 中 F# (major非顺阶) → Em (vi)，主调骨架更清晰 |
+| 晴天 G 大调 | 47/614 (7.7%) | **Gm × 19 → 完全消失**；B × 17 → Bm × 13；F#m × 21 涌现（vii 浮出） |
+| 高跟鞋 D 大调 | 15/301 (5.0%) | E (大三 非顺阶) → Em；E2/A/G/Bm/D 主结构稳固 |
+
+调性识别全部仍命中 ≥86%，**未引入新错误**。
+
+**B. ChordSummaryCard 和弦可点击 → ChordDetailModal (+95 行)**
+
+- 主要和弦卡片、走向走向的每个和弦名都是按钮
+- 点击弹出半透明 backdrop + 居中卡片
+- 复用现有 `src/components/ChordDiagram.tsx` (dark 主题) + `chords.ts` 词典
+- 找到映射 → 显示按法图 + 弹奏 tips + 多按法数提示
+- 找不到 → 优雅降级显示「该和弦暂未收录指法图谱」
+
+Essentia 输出 (`C / Am / F#m / Bm / D`) 与 CHORDS.id 命名 100% 对齐，无需映射层。
+
+**C. WebAssembly 能力检测 + Native 降级提示 (+30 行 + docs)**
+
+- 不再用 UA 字符串判断 Expo，改纯能力检测：`typeof WebAssembly !== 'undefined' && typeof BigInt !== 'undefined'`
+- 不支持环境（极老 WebView）显示降级卡片：「当前环境不支持离线识别，请在主流浏览器中打开」
+- 其他功能（调音器/和弦/节拍器）不受影响
+- 新增 `docs/native-essentia-check.md`：5 步真机验证清单（Web 基线 → build → copy-web → expo start → 真机测试）
+
+**D. MediaRecorder mimeType 检测 + visibilitychange 切后台兜底 (+25 行)**
+
+修移动端隐藏 bug：
+- `pickMimeType()` 按 `webm/opus → webm → mp4 → mp4/aac → default` 优先级查 `MediaRecorder.isTypeSupported`
+- iOS Safari 落 mp4，Chrome/Android 落 webm/opus，桌面 Safari 17+ 兼容
+- 切 tab/锁屏（document.visibilitychange → hidden）→ 自动 stop recorder → 走正常 onstop 分析链，不再卡 recording 态
+
+**E. UI 增强**：时间线条状图被 snap 的段加虚线下边框 + 时间线副标题「{N} 段已按调性纠正」标识
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅ 主 bundle 397 KB (Round 47 是 401 KB，反而瘦了 4 KB 因为 modal 用现成 ChordDiagram)
+- `npm run eval:check` ✅ A/B/C/D/E 5 个 baseline 全过（旧 chord-detector 未动）
+- 三曲 essentia-eval 实测 snap 前后对比已写入 README 上表
+
+**Karpathy 自检**
+- ✅ Surgical：4 个任务全部在现有文件加减小段，唯一新文件是 markdown doc
+- ✅ YAGNI：砍掉了录音历史、虚拟滚动、tgz 挪位、legacy 删除 — 用户没要求
+- ✅ Goal-driven：每个任务有可测验收（snap 数字、降级 UI、modal 弹层、mimeType console 输出）
+- ✅ 不假设：UA 检测改纯能力检测，让真实功能决定降级而不是字符串猜测
+- ⚠️ ChordTimeline 渲染极限 / 录音历史等需求留给真实用户反馈驱动
+
+**Round 49 候选方向 (待用户反馈)**
+1. **真机端到端实测**: 用户跑 `docs/native-essentia-check.md` 清单，看冷启动加载时长 + 是否真正满足 PRD ≤3s 验收
+2. **WASM inline 优化**: 如果 native 端 dynamic import 不 work，把 essentia-wasm.es.js 也 inline 进 HTML（代价：HTML 从 430 KB 暴涨到 3 MB）
+3. **更多 song fixtures**: 添加更多曲目 (流行/民谣/摇滚) 评测 snap 效果普适性
+4. **删除 ListenPage.legacy.tsx + ChordDetector 自研引擎**: 经 2-3 轮 Essentia 稳定后清理
+5. **Backlog: 人声分离 (Spleeter)**: 评估包体积/推理时间
+
+

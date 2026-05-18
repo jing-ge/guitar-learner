@@ -29,6 +29,10 @@ export interface BeatChord {
   chord: string;
   /** 该 beat 区间的色度强度（0~1） */
   strength: number;
+  /** Round 48: 是否被 key-aware 后处理 snap 过（UI 灰显或加角标） */
+  snapped?: boolean;
+  /** Round 48: snap 之前的原始和弦名（仅 snapped=true 时存在，给调试看） */
+  originalChord?: string;
 }
 
 export interface KeyResult {
@@ -222,11 +226,17 @@ export async function analyzeRecording(
       strength: keyOut.strength,
     };
 
+    // Round 48: key-aware 后处理，把非顺阶低置信噪声 snap 到最近顺阶
+    // 只在调性识别足够自信（≥ 50%）时启用；否则保持原 Essentia 输出
+    const finalChords = key.strength >= 0.5
+      ? snapToDiatonic(beatChords, key)
+      : beatChords;
+
     return {
       bpm,
       ticks: ticksJs,
       key,
-      beatChords,
+      beatChords: finalChords,
       elapsedMs: performance.now() - t0,
     };
   } finally {
@@ -253,6 +263,130 @@ export async function analyzeRecording(
 }
 
 // ============ 单帧基频 (给 Tuner / PitchTrainer) ============
+
+// ============ Round 48: key-aware 和弦后处理 ============
+
+const PC_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_TO_SHARP: Record<string,string> = { Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#', Bb:'A#' };
+
+/** 解析 Essentia 输出的和弦名 → { rootPc, isMinor }。null = 解析失败 / "N" 无和弦 */
+function parseEssentiaChord(name: string): { rootPc: number; isMinor: boolean } | null {
+  if (!name || name === 'N') return null;
+  let token = name[0]!;
+  let rest = name.slice(1);
+  if (rest[0] === '#' || rest[0] === 'b') {
+    token = name.slice(0, 2);
+    rest = name.slice(2);
+  }
+  if (token.length === 2 && token[1] === 'b') {
+    const mapped = FLAT_TO_SHARP[token];
+    if (!mapped) return null;
+    token = mapped;
+  }
+  const rootPc = PC_NAMES.indexOf(token);
+  if (rootPc < 0) return null;
+  // Essentia 只输出 maj/min — "Am" / "Bm" / "F#m" 是 minor，其它都是 major
+  const isMinor = rest === 'm' || rest === 'min';
+  return { rootPc, isMinor };
+}
+
+/** rootPc + isMinor → 和弦名（用于 snap 后构造新 name） */
+function formatChord(rootPc: number, isMinor: boolean): string {
+  return PC_NAMES[((rootPc % 12) + 12) % 12] + (isMinor ? 'm' : '');
+}
+
+/**
+ * 顺阶集合（含主调 + 常见借用和弦）
+ *
+ * Major key (rootPc=0 时):
+ *   - 七顺阶: I=C(M), ii=Dm, iii=Em, IV=F(M), V=G(M), vi=Am, vii°=Bdim (我们没 dim 模板 → 用 Bm 近似)
+ *   - 常见借用: bVII=Bb(M), iv=Fm (parallel minor)
+ *
+ * Minor key (rootPc=0 时, A minor 假设):
+ *   - 自然小调七顺阶 (A natural minor): i=Am, ii°≈Bm, III=C(M), iv=Dm, v=Em, VI=F(M), VII=G(M)
+ *   - Harmonic minor V=E(M) 也认（大三和弦做 dominant）
+ *   - Picardy third I=A(M) 罕见但合法
+ */
+function getDiatonicSet(keyRootPc: number, keyScale: 'major' | 'minor'): Set<string> {
+  const out = new Set<string>();
+  const r = ((keyRootPc % 12) + 12) % 12;
+  if (keyScale === 'major') {
+    // 主调七顺阶（vii° 用 vii(m) 近似，因为 Essentia 不输出 dim）
+    out.add(formatChord(r, false));               // I
+    out.add(formatChord((r + 2) % 12, true));     // ii
+    out.add(formatChord((r + 4) % 12, true));     // iii
+    out.add(formatChord((r + 5) % 12, false));    // IV
+    out.add(formatChord((r + 7) % 12, false));    // V
+    out.add(formatChord((r + 9) % 12, true));     // vi
+    out.add(formatChord((r + 11) % 12, true));    // vii (≈ vii°)
+    // 常见借用
+    out.add(formatChord((r + 10) % 12, false));   // bVII (modal interchange)
+    out.add(formatChord((r + 5) % 12, true));     // iv (parallel minor borrow)
+  } else {
+    // natural minor 七顺阶
+    out.add(formatChord(r, true));                // i
+    out.add(formatChord((r + 2) % 12, true));     // ii° ≈ ii
+    out.add(formatChord((r + 3) % 12, false));    // III
+    out.add(formatChord((r + 5) % 12, true));     // iv
+    out.add(formatChord((r + 7) % 12, true));     // v
+    out.add(formatChord((r + 7) % 12, false));    // V (harmonic minor dominant)
+    out.add(formatChord((r + 8) % 12, false));    // VI
+    out.add(formatChord((r + 10) % 12, false));   // VII
+    out.add(formatChord(r, false));               // I (picardy third)
+  }
+  return out;
+}
+
+/**
+ * Round 48: key-aware 后处理 —— 把非顺阶噪声 snap 到最近顺阶
+ *
+ * 规则:
+ *   1. 若和弦在顺阶集合内 → 不动
+ *   2. 若和弦不在集合 + strength ≥ 0.6 → 不动（高置信，可能是真实借用）
+ *   3. 若和弦不在集合 + strength < 0.6 → 在集合中找色度距离最近的（≤ 2 半音）替换
+ *      - 优先同 quality (major↔major, minor↔minor)
+ *      - 若同 quality 距离 > 2 半音，允许跨 quality（但加大距离权重）
+ *
+ * @param chords beat-aligned 和弦序列
+ * @param key 调性
+ * @returns snap 后的新序列（snapped 字段标记被改的）
+ */
+export function snapToDiatonic(chords: BeatChord[], key: KeyResult): BeatChord[] {
+  const keyRootPc = PC_NAMES.indexOf(key.key);
+  if (keyRootPc < 0) return chords;  // key 无法解析，不动
+  const diatonic = getDiatonicSet(keyRootPc, key.scale);
+
+  // 预算每个顺阶和弦的 rootPc + isMinor，便于距离比较
+  const diatonicParsed = [...diatonic].map(name => ({ name, ...parseEssentiaChord(name)! }));
+
+  return chords.map(bc => {
+    const parsed = parseEssentiaChord(bc.chord);
+    if (!parsed) return bc;
+    if (diatonic.has(bc.chord)) return bc;       // 已在顺阶
+    if (bc.strength >= 0.6) return bc;            // 高置信不动
+
+    // 找最近顺阶：cost = |pc_dist|（mod 12 最短路径）+ 同质惩罚 0 / 跨质惩罚 1.5
+    let best: { name: string; cost: number } | null = null;
+    for (const d of diatonicParsed) {
+      const rawDist = Math.abs(parsed.rootPc - d.rootPc);
+      const pcDist = Math.min(rawDist, 12 - rawDist);
+      const qualityPenalty = (parsed.isMinor === d.isMinor) ? 0 : 1.5;
+      const cost = pcDist + qualityPenalty;
+      if (!best || cost < best.cost) best = { name: d.name, cost };
+    }
+    if (!best || best.cost > 3) return bc;        // 距离太远，宁可不改
+    return {
+      ...bc,
+      chord: best.name,
+      snapped: true,
+      originalChord: bc.chord,
+    };
+  });
+}
+
+// ============ /Round 48 ============
+
+
 
 /**
  * 用 Essentia 的 PitchYinFFT 算单帧基频。
