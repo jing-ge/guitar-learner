@@ -62,10 +62,10 @@ const QUALITY_INTERVALS = {
   maj:  [[0, 1.0], [4, 1.0], [7, 0.5]],
   min:  [[0, 1.0], [3, 1.0], [7, 0.5]],
   dim:  [[0, 1.0], [3, 1.0], [6, 0.5]],
-  // 七和弦（卡农会出 D7 等）
-  maj7: [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.5]],
-  m7:   [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.5]],
-  dom7: [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.5]],
+  // 七和弦（卡农会出 D7 等） Round 44 D: 0.5 → 0.4 防 plain triad 过拟合到 7th 模板
+  maj7: [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.4]],
+  m7:   [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.4]],
+  dom7: [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.4]],
 };
 const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const QUALITY_NAMES = { maj: '', min: 'm', dim: 'dim', maj7: 'maj7', m7: 'm7', dom7: '7' };
@@ -204,9 +204,10 @@ const DIATONIC_MAJOR_R40 = [[0,'M'],[2,'m'],[4,'m'],[5,'M'],[7,'M'],[9,'m'],[11,
 const DIATONIC_MINOR_R40 = [[0,'m'],[2,'d'],[3,'M'],[5,'m'],[7,'m'],[7,'M'],[8,'M'],[10,'M']];
 
 function simplifyQuality(q) {
-  if (['maj','maj7','dom7'].includes(q)) return 'M';
+  if (['maj','maj7','dom7','M'].includes(q)) return 'M';
   if (['min','m','m7'].includes(q)) return 'm';
-  if (q === 'dim') return 'd';
+  if (q === 'dim' || q === 'd') return 'd';
+  if (q === 'sus' || q === 'sus2' || q === 'sus4') return 's';  // Round 44 A
   return 'other';
 }
 
@@ -327,7 +328,28 @@ for (let f = 0; f < totalFrames; f++) {
   // 匹配
   const scored = matchTemplates(chromaFinal, bassNorm, templates);
   if (!scored) continue;
-  const top = scored[0];
+
+  // Round 44 G: 族聚合 — score_family = best.adjusted + 0.3 × second.adjusted
+  const famMap = new Map();
+  for (const s of scored) {
+    const fam = `${s.rootPc}-${simplifyQuality(s.quality)}`;
+    let e = famMap.get(fam);
+    if (!e) { e = { best: null, second: 0 }; famMap.set(fam, e); }
+    if (!e.best || s.score > e.best.score) {
+      if (e.best) e.second = Math.max(e.second, e.best.score);
+      e.best = s;
+    } else if (s.score > e.second) {
+      e.second = s.score;
+    }
+  }
+  let topFam = null;
+  let topFamScore = 0;
+  for (const [, e] of famMap) {
+    if (!e.best) continue;
+    const fs = e.best.score + 0.3 * e.second;
+    if (fs > topFamScore) { topFamScore = fs; topFam = e.best; }
+  }
+  const top = topFam || scored[0];
 
   debugFrames.push({ f, t: f * FRAME_SEC, top1: top.name, conf: top.score, top2: scored[1].name, top2Conf: scored[1].score });
 

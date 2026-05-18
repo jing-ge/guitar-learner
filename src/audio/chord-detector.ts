@@ -75,16 +75,18 @@ const MAX_CHORDS_PER_SECOND_LIVE = 3;  // Round 39: 2 → 3 — 让 120BPM 一�
 
 // Round 41: 同根 + 同三度质量视为一族（F#m / F#m7 / F#sus2 都进 "F#-minor" 族）
 //   投票按族计数，避免 variant 反复横跳导致状态机重置 → commit 几乎不触发
+// Round 44 A: sus 独立为 's' 族 —— sus2/sus4 不含 3rd，归入 'M' 会偷 major 票
 function familyKey(chord: ChordDef): string {
   // 解析 root pc：用 chord.id 首字母 + 可选 #/b
   let token = chord.id[0] ?? 'C';
   if (chord.id[1] === '#' || chord.id[1] === 'b') token = chord.id.slice(0, 2);
-  // 简化 quality：minor/min7 → 'm'；dim → 'd'；其他视为 'M'（major/maj7/dom7/sus/aug）
+  // 简化 quality
   const q = chord.quality;
-  let qFam: 'M' | 'm' | 'd';
+  let qFam: 'M' | 'm' | 'd' | 's';
   if (q === 'minor' || q === 'min7') qFam = 'm';
   else if (q === 'dim') qFam = 'd';
-  else qFam = 'M';
+  else if (q === 'sus') qFam = 's';
+  else qFam = 'M';  // major / maj7 / dom7 / aug
   return `${token}-${qFam}`;
 }
 
@@ -166,18 +168,19 @@ const QUALITY_INTERVALS: Record<TemplateQuality, Array<[number, number]>> = {
   // [interval_semitones, weight]
   maj:   [[0, 1.0], [4, 1.0], [7, 0.5]],
   min:   [[0, 1.0], [3, 1.0], [7, 0.5]],
-  '7':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.6]],
-  maj7:  [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.6]],
-  m7:    [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.6]],
+  // Round 44 D: 7th 扩展音权重 0.6 → 0.4 —— 防止 chroma 泄漏让 maj7/m7 模板对 plain triad 过激发
+  '7':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.4]],
+  maj7:  [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.4]],
+  m7:    [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.4]],
   sus2:  [[0, 1.0], [2, 0.9], [7, 0.5]],
   sus4:  [[0, 1.0], [5, 0.9], [7, 0.5]],
   dim:   [[0, 1.0], [3, 1.0], [6, 0.7]],
   aug:   [[0, 1.0], [4, 1.0], [8, 0.7]],
   // Round 21: 4 个新 quality（14 度在 buildVec 里 mod 12）
-  m7b5:  [[0, 1.0], [3, 1.0], [6, 0.7], [10, 0.6]],
-  '6':   [[0, 1.0], [4, 1.0], [7, 0.5], [9, 0.6]],
-  '9':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.6], [14, 0.5]],
-  add9:  [[0, 1.0], [4, 1.0], [7, 0.5], [14, 0.5]],
+  m7b5:  [[0, 1.0], [3, 1.0], [6, 0.7], [10, 0.4]],
+  '6':   [[0, 1.0], [4, 1.0], [7, 0.5], [9, 0.4]],
+  '9':   [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.4], [14, 0.4]],
+  add9:  [[0, 1.0], [4, 1.0], [7, 0.5], [14, 0.4]],
 };
 
 const QUALITY_TO_CHORD_DEF_QUALITY: Record<TemplateQuality, ChordDef['quality']> = {
@@ -539,10 +542,35 @@ export class ChordDetector {
         ? sim * (1 + KEY_PRIOR_BOOST)
         : sim;
       hits.push({ tpl, sim, adjusted });
-      if (adjusted > bestAdjusted) {
-        bestAdjusted = adjusted;
-        bestSim = sim;
-        bestEntry = tpl;
+    }
+
+    // Round 44 G: 模板得分按族聚合，反转同根 quality 误判
+    //   族 score = max(sim within family) + 0.3 × second-best(sim within family)
+    //   先选最强族 → 族内选最强 variant
+    //   原始单 variant 得分仅用于 confidence/threshold（避免破坏 round5 阈值意义）
+    type FamilyEntry = { best: { tpl: TemplateEntry; sim: number; adjusted: number } | null; second: number };
+    const familyScores = new Map<string, FamilyEntry>();
+    for (const h of hits) {
+      const cd = resolveChordDef(h.tpl);
+      const fam = familyKey(cd);
+      let entry = familyScores.get(fam);
+      if (!entry) { entry = { best: null, second: 0 }; familyScores.set(fam, entry); }
+      if (!entry.best || h.adjusted > entry.best.adjusted) {
+        if (entry.best) entry.second = Math.max(entry.second, entry.best.adjusted);
+        entry.best = h;
+      } else if (h.adjusted > entry.second) {
+        entry.second = h.adjusted;
+      }
+    }
+    let bestFamilyScore = 0;
+    for (const [, entry] of familyScores) {
+      if (!entry.best) continue;
+      const famScore = entry.best.adjusted + 0.3 * entry.second;
+      if (famScore > bestFamilyScore) {
+        bestFamilyScore = famScore;
+        bestAdjusted = entry.best.adjusted;
+        bestSim = entry.best.sim;
+        bestEntry = entry.best.tpl;
       }
     }
     // 注意：阈值判定 + confidence 都用原始 sim，不让 prior 把弱信号拉过线
