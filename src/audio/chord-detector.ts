@@ -57,36 +57,41 @@ export interface ChordDetectEvent {
 
 // ---- Stability constants ----
 const SMOOTHING_WINDOW = 5;             // 帧平滑窗口
-const MIN_CONFIRM_FRAMES = 12;          // ~200ms 进入 confirmed
+const MIN_CONFIRM_FRAMES = 16;          // Round 46: 12 → 16 (~270ms 进 confirmed) 防止 candidate 太敏感导致一闪而过
 const EXIT_HOLD_FRAMES = 6;             // 跌破 exit ≥ 6 帧才允许切换
 const EXIT_THRESHOLD = 0.45;            // hysteresis 离开门槛
 const SILENCE_FRAMES = 8;
 
 // sensitivity 矩阵
 const SENSITIVITY: Record<DetectorSensitivity, { enter: number; minCommitPractice: number; minCommitLive: number }> = {
-  // Round 41: live profile minCommit 大幅下调（族折叠 + 真实曲目 1-2s/chord，原 36-44 帧 commit 永远不触发）
-  strict: { enter: 0.70, minCommitPractice: 28, minCommitLive: 24 },
+  // Round 46: 重新拉开三档区分度（之前 round41 调小后三档差距 < 0.6s，体感无差异）
+  //   strict: 慢稳，仅在和弦持续 ~3s 才 commit，适合慢歌/低误识别
+  //   normal: 中庸 ~1.7s
+  //   loose:  快敏，~0.9s commit，适合快歌/高速识别（但误识别多）
+  strict: { enter: 0.72, minCommitPractice: 32, minCommitLive: 28 },
   normal: { enter: 0.62, minCommitPractice: 20, minCommitLive: 18 },
-  loose:  { enter: 0.55, minCommitPractice: 14, minCommitLive: 12 },
+  loose:  { enter: 0.52, minCommitPractice: 12, minCommitLive: 10 },
 };
 
-const MAX_CHORDS_PER_SECOND_PRACTICE = 3;
-const MAX_CHORDS_PER_SECOND_LIVE = 3;  // Round 39: 2 → 3 — 让 120BPM 一拍一和弦不被吞
+const MAX_CHORDS_PER_SECOND_PRACTICE = 2;  // Round 46: 3 → 2 防止快歌输出一大串
+const MAX_CHORDS_PER_SECOND_LIVE = 2;      // Round 46: 3 → 2 — 2/s = 30 BPM 每拍一和弦上限，符合主流歌曲
 
 // Round 41: 同根 + 同三度质量视为一族（F#m / F#m7 / F#sus2 都进 "F#-minor" 族）
 //   投票按族计数，避免 variant 反复横跳导致状态机重置 → commit 几乎不触发
-// Round 44 A: sus 独立为 's' 族 —— sus2/sus4 不含 3rd，归入 'M' 会偷 major 票
+// Round 46: sus 回退到 'M' 族 (rollback round44 A)
+//   原 round44 A 把 sus 单独为 's' 族，实测让 sus2/sus4/add9 误识别频率暴增 (40 commit 里 17 次 sus)
+//   原因：sus 模板没 3rd 槽 → cosine 不惩罚未匹配的 3rd → 真实 maj 输入下 sus 模板拿"免费分"
+//   折叠回 M 族后，sus 与 maj/maj7 同族投票，族内 bestChord 选最高 sim → 真实 maj 输入下 maj 胜出
 function familyKey(chord: ChordDef): string {
   // 解析 root pc：用 chord.id 首字母 + 可选 #/b
   let token = chord.id[0] ?? 'C';
   if (chord.id[1] === '#' || chord.id[1] === 'b') token = chord.id.slice(0, 2);
-  // 简化 quality
+  // 简化 quality: minor/min7 → 'm'; dim → 'd'; 其他（major/maj7/dom7/sus/aug/add9/sus2/sus4）→ 'M'
   const q = chord.quality;
-  let qFam: 'M' | 'm' | 'd' | 's';
+  let qFam: 'M' | 'm' | 'd';
   if (q === 'minor' || q === 'min7') qFam = 'm';
   else if (q === 'dim') qFam = 'd';
-  else if (q === 'sus') qFam = 's';
-  else qFam = 'M';  // major / maj7 / dom7 / aug
+  else qFam = 'M';
   return `${token}-${qFam}`;
 }
 
@@ -218,7 +223,14 @@ interface TemplateEntry {
 }
 
 const CHORD_TEMPLATES_V2: TemplateEntry[] = (() => {
-  const qualities: TemplateQuality[] = ['maj', 'min', '7', 'maj7', 'm7', 'sus2', 'sus4', 'dim', 'aug', 'm7b5', '6', '9', 'add9'];
+  // Round 46: 仅保留大小三和弦模板 (24 个)。
+  // 理由：
+  //   1. 学习场景下用户看到 C-Am-F-G 比 Cmaj7-Am7-F6-G7 更易理解记忆
+  //   2. 7th/sus/add9/dim/aug 模板与 maj/min 频繁误判（round38-44 调试已确认）
+  //   3. 即使原谱是 Dmaj7，功能位置仍是 D，学习者按 D 弹 99% 没区别
+  //   4. 模板从 156 → 24，配合 round44 G 族聚合，识别更稳更易解释
+  // 如未来想精确扒谱，可在 settings 加 "扩展和弦模式" 开关再启用更多 qualities。
+  const qualities: TemplateQuality[] = ['maj', 'min'];
   const out: TemplateEntry[] = [];
   for (let rootPc = 0; rootPc < 12; rootPc++) {
     for (const q of qualities) {
@@ -371,8 +383,14 @@ export class ChordDetector {
       this.running = true;
       this.loop();
     } catch (err) {
-      console.warn('麦克风不可用', err);
-      this.emitEvent(null, performance.now());
+      // Round 46: 不再吞错。让 caller 看到 NotAllowedError / NotFoundError，UI 才能正确显示 "denied" 或 "error"
+      console.warn('麦克风初始化失败', err);
+      // 清理可能已经获取的资源
+      if (this.stream) { try { this.stream.getTracks().forEach(t => t.stop()); } catch {} this.stream = null; }
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
+      this.source = null;
+      this.analyser = null;
+      throw err;
     }
   }
 

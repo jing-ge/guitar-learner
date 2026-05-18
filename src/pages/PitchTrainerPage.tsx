@@ -230,17 +230,8 @@ export default function PitchTrainerPage() {
 
   // 启动检测器
   const startTask = useCallback(async (m: Mode) => {
-    setMicState('requesting');
-    const Ctor = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(t => t.stop());
-      setMicState('granted');
-    } catch {
-      setMicState('denied');
-      return;
-    }
-    void Ctor; // suppress unused warning, real ctor used inside pitchDetector
+    // Round 46: 不再 probeMic（之前 getUserMedia + stop track + 立即再 getUserMedia 在 Android WebView 上死锁）
+    // 直接进入 task → useEffect 里 pitchDetector.start 会自己处理权限错误并设置 micState
 
     const qs = m === 'pluck' ? buildPluckQuiz() : buildSingQuiz();
     setQuestions(qs);
@@ -260,12 +251,29 @@ export default function PitchTrainerPage() {
     setStep('task');
   }, []);
 
-  // 开 detector（step 进 task 后）
+  // Round 46: handleResult 用 ref 持有最新版本，避免每题切换重启 detector
+  // 重启 detector = stop() + start() race，在 Android WebView 上会导致 mic 静默死锁
+  const handleResultRef = useRef(handleResult);
+  useEffect(() => { handleResultRef.current = handleResult; }, [handleResult]);
+
+  // 开 detector（step 进 task 后，仅启一次，整组 5 题共用）
   useEffect(() => {
     if (step !== 'task') return;
-    pitchDetector.start(handleResult);
+    setMicState('requesting');
+    const stableCb = (res: PitchResult | null) => handleResultRef.current(res);
+    pitchDetector.start(stableCb).then(() => {
+      setMicState('granted');
+    }).catch(err => {
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+        setMicState('denied');
+      } else {
+        setMicState('error');
+      }
+      setStep('intro');
+    });
     return () => pitchDetector.stop();
-  }, [step, handleResult]);
+  }, [step]);  // 仅依赖 step；handleResult 通过 ref 访问
 
   // 卸载时确保关 detector
   useEffect(() => () => { pitchDetector.stop(); }, []);

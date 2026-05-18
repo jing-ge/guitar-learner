@@ -139,8 +139,13 @@ export class PitchDetector {
       this.running = true;
       this.loop();
     } catch (err) {
+      // Round 46: 不再吞错，让 caller 看到 NotAllowedError 并显示 denied UI
       console.warn('麦克风权限被拒绝或不可用', err);
-      this.callback(null);
+      if (this.stream) { try { this.stream.getTracks().forEach(t => t.stop()); } catch {} this.stream = null; }
+      if (this.audioCtx) { try { this.audioCtx.close(); } catch {} this.audioCtx = null; }
+      this.source = null;
+      this.analyser = null;
+      throw err;
     }
   }
 

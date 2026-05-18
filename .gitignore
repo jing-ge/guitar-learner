@@ -29,3 +29,6 @@ native/ios/
 native/.expo/
 native/assets/web/
 tsconfig.tsbuildinfo
+
+# 本地 npm 包源文件 (essentia.js 已 npm install 进 node_modules)
+essentia.js-*.tgz

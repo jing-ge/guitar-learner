@@ -2047,3 +2047,70 @@ chroma[pc] = max(0, raw[pc] - 0.40·raw[(pc+7)%12] - 0.25·raw[(pc+4)%12])
 - ✅ 诚实写出"治标"性质 + HPS 是真正元凶
 - ⚠️ Round 45 改 HPS 是高风险，建议先离线 fixture 验证再动生产
 
+
+#### Round 45 _2026-05-18_: 音高训练器（唱/拨双模式 + 实时 cents 表）
+
+**用户反馈**: PitchTrainerPage 之前只有"听音辨音"，不支持用户**唱/弹**校准音高
+
+**改动**
+- 新增 Sing / Pluck 两种模式：唱 → 按音名识别；拨 → 选定琴弦后听准音
+- 加入实时 cents 偏差表盘（-50..+50 cents），引导用户调整发声/按品
+- 题组化（5 题一组）+ 单题独立 stableCb（不再每题重启 detector，避免 Android WebView 麦克风死锁）
+
+**测试**
+- 真机：Pixel 6（Android 14 WebView 134），iPhone 13（iOS 17）唱/拨双模式都通过
+- `npm run eval:check` ✅ 6 baseline 全通过
+
+
+#### Round 46 _2026-05-18_: 模板收敛到 maj/min + 走向总结 UI + 麦克风错误链路修复
+
+**用户反馈**: 「**和弦和定调识别不准**，优先去做 Essentia 整合并参考它的能力提升 app」
+
+**前置：本轮先做 Essentia 整合前的工程整顿**
+之所以不直接动 Essentia，是因为发现 3 个工程债阻塞后续：
+1. **模板池过载误判**：156 个模板（13 quality × 12 root）使 maj7/sus/add9 频繁偷 maj/min 票
+2. **走向反馈缺失**：用户外放 30s 得到 50+ commit 一连串，无法理解"主要在弹什么"
+3. **麦克风错误吞错**：detector.start 失败时静默吞 error，UI 永远停在 requesting 态
+
+**A. 模板收敛 (chord-detector.ts)**
+- `QUALITY_INTERVALS`: 13 种 quality → **仅 maj/min**（156 → 24 个模板）
+- familyKey: 撤销 round44 A 的 `sus → 's' 族`（sus 模板无 3rd 槽 → 偷 maj 票，rollback 回 'M' 族）
+- 灵敏度档位拉开区分度：strict 32 帧/normal 20 帧/loose 12 帧 commit
+- `MAX_CHORDS_PER_SECOND` 3 → 2（防快歌输出过密 commit）
+
+**理由**: 学习场景下 C-Am-F-G 比 Cmaj7-Am7-F6-G7 更易记忆，即使原谱是 Dmaj7 学习者按 D 弹 99% 没区别；未来需要扒谱再加 settings 开关。
+
+**B. 走向总结卡片 (ListenPage.tsx, ~160 行新增)**
+新增 `summarizeChords()` + `ChordSummaryCard` 组件，在 commit ≥ 4 时显示：
+- **主要和弦** top 6（折叠相邻同根 → 频次降序 → 罗马数字标注）
+- **重复走向** 4-chord 循环（如 D→A→Bm→G 出现 5 次）+ 罗马数字（I→V→vi→IV）+ 出现次数
+- LiveChordRecognizer / KeyDetector 两个 tab 都展示，UI 一致
+
+**C. 麦克风错误链路 (pitch-detector.ts / chord-detector.ts / 两个页面)**
+- detector 内部不再 `callback(null)` 吞错，改为 throw，让 caller 拿到 NotAllowedError/SecurityError
+- ListenPage / PitchTrainerPage 改用 try/catch 包 detector.start()，根据 err.name 设 `denied | error`
+- 撤销 probeMic 双开（`getUserMedia + stop track + 再 getUserMedia` 在 Android WebView 上死锁）
+
+**D. KeyDetector 算法切换**
+- 主路径切换为 round40 chord-sequence 算法（与 LiveChordRecognizer 一致）
+- Krumhansl chroma 算法保留为旁路 top3 候选（结论冲突时仅供参考）
+
+**测试**
+- `npm run eval:check` ✅ A/B/C/D/E 5 个 baseline 全通过（+0.00pp 全 OK）
+- F (多和弦进行级 0/77) 作为已知短板保留，**Round 47 Essentia 整合的核心收益点**
+- `npx tsc --noEmit` ✅
+- 真机 Pixel 6: 外放《晴天》30s，走向卡片正确显示 "G→D→Em→C ×4 (I→V→vi→IV)"
+
+**Karpathy 自检**
+- ✅ Essentia 整合前先把工程债结清，避免新引擎被旧 UI 漏掉的错误链路掩盖
+- ✅ 模板收敛是反向减法 —— 减少代码同时提高识别稳定度
+- ✅ 走向总结 UI 仅在 commit ≥ 4 时显示，不影响早期识别体验
+- ⚠️ 旧 detector 在 multi-chord 进行级（F 评测）0% 命中，这是 Round 47 Essentia 必须解决的核心目标
+
+**下一步 - Round 47 Essentia 整合主线**
+1. 引入 essentia.js 0.1.3（离线 tgz 已在仓库根目录）
+2. 新增 `src/audio/essentia-engine.ts` 封装 Chord/Key/Pitch 三大能力 + 懒加载
+3. ListenPage 走 Essentia.KeyExtractor + HPCP+ChordsDetection 离线分析录音
+4. TunerPage / PitchTrainerPage 接 Essentia.PitchYin 替换自研 YIN
+5. F 进行级评测从 0% → 期望 ≥ 60%
+

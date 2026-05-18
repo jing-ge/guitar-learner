@@ -58,17 +58,13 @@ const MAX_CHORDS_PER_SECOND = 3;
 
 // ============== Quality 模板 ==============
 // 与 chord-detector.ts QUALITY_INTERVALS 对齐（简化版，maj/min 即可覆盖大部分卡农）
+// Round 46: 仅 maj/min（与生产对齐，去掉 7/dim/sus 等扩展和弦）
 const QUALITY_INTERVALS = {
   maj:  [[0, 1.0], [4, 1.0], [7, 0.5]],
   min:  [[0, 1.0], [3, 1.0], [7, 0.5]],
-  dim:  [[0, 1.0], [3, 1.0], [6, 0.5]],
-  // 七和弦（卡农会出 D7 等） Round 44 D: 0.5 → 0.4 防 plain triad 过拟合到 7th 模板
-  maj7: [[0, 1.0], [4, 1.0], [7, 0.5], [11, 0.4]],
-  m7:   [[0, 1.0], [3, 1.0], [7, 0.5], [10, 0.4]],
-  dom7: [[0, 1.0], [4, 1.0], [7, 0.5], [10, 0.4]],
 };
 const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const QUALITY_NAMES = { maj: '', min: 'm', dim: 'dim', maj7: 'maj7', m7: 'm7', dom7: '7' };
+const QUALITY_NAMES = { maj: '', min: 'm' };
 
 function chordName(root, q) {
   return SHARP[root] + (QUALITY_NAMES[q] ?? q);

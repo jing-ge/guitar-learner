@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { chordDetector, type ChordDetectEvent, type DetectorSensitivity, type DetectorState } from '../audio/chord-detector';
 import type { ChordDef } from '../theory/chords';
 import { SHARP_NAMES } from '../theory/notes';
@@ -111,18 +111,23 @@ function LiveChordRecognizer() {
 
   useEffect(() => { historyRef.current = history; }, [history]);
 
+  // Round 47: 走向总结 — 把 raw commit 流变成"主要和弦 + 重复走向"卡片
+  const liveSummary = useMemo(
+    () => summarizeChords(
+      history.map(h => ({ name: h.name, chordId: h.chordId })),
+      inferredKey ? inferredKey.root : null,
+      inferredKey ? inferredKey.mode : null,
+    ),
+    [history, inferredKey],
+  );
+
   // 切换灵敏度即时生效（即便正在监听）
   useEffect(() => { chordDetector.setSensitivity(sensitivity); }, [sensitivity]);
 
   const start = useCallback(async () => {
     console.log('[round39-start] 🎤 开始监听');
+    // Round 46: 不再 probeMic（stream race 在 Android WebView 上让麦克风静默失效）
     setMicState('requesting');
-    const perm = await probeMic();
-    if (perm !== 'granted') {
-      setMicState(perm);
-      return;
-    }
-    setMicState('granted');
     setActiveChord(null);
     setActiveHeldMs(0);
     setActiveConf(0);
@@ -142,7 +147,8 @@ function LiveChordRecognizer() {
     chordDetector.setProfile('live');
     chordDetector.setSensitivity(sensitivity);
 
-    await chordDetector.start((event: ChordDetectEvent) => {
+    try {
+      await chordDetector.start((event: ChordDetectEvent) => {
       setState(event.state);
       setProgress(event.progress);
       if (event.active) {
@@ -300,7 +306,12 @@ function LiveChordRecognizer() {
         }
       }
     });
-    setListening(true);
+      setMicState('granted');
+      setListening(true);
+    } catch (err: any) {
+      const name = err?.name || '';
+      setMicState(name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' ? 'denied' : 'error');
+    }
   }, [sensitivity]);
 
   const stop = useCallback(() => {
@@ -482,6 +493,9 @@ function LiveChordRecognizer() {
         </>
       )}
 
+      {/* Round 47: 走向总结卡片（commit 数 ≥ 4 才显示） */}
+      {history.length >= 4 && <ChordSummaryCard summary={liveSummary} />}
+
       <div className="card">
         <p style={{ fontSize: 13 }}>💡 <b>使用方法</b>：对着手机播放歌曲（音箱/另一台手机外放），app 会实时识别和弦变化并记录走向。也可以弹吉他自己录制和弦走向。</p>
         <p style={{ fontSize: 13 }}>⚠️ 识别效果受环境噪音影响。尽量安静环境 + 音源清晰。<br/>
@@ -619,6 +633,152 @@ function inferKeyFromChords(
 }
 // ============ /Round 40-42 ============
 
+// ============ Round 47: 和弦走向总结 ============
+//   解决问题: 用户外放 30 秒得到一连串 50 个 commit (D→A→Bm→Bm→F#m→G→A→...) 难以理解。
+//   方案: 折叠相邻同根 → 频次统计 top 6 → 罗马数字 → 提取重复 4-chord 走向
+
+const ROMAN_MAJOR_R47 = ['I', 'bII', 'II', 'bIII', 'III', 'IV', '#IV', 'V', 'bVI', 'VI', 'bVII', 'VII'];
+const ROMAN_MINOR_R47 = ['i', 'bii', 'ii', 'III', 'iii', 'iv', '#iv', 'v', 'VI', 'vi', 'VII', 'vii'];
+
+function toRoman(rootPc: number, quality: string, keyRoot: number, keyMode: 'major' | 'minor'): string {
+  const interval = ((rootPc - keyRoot) % 12 + 12) % 12;
+  const sq = simplifyQuality(quality);
+  const baseTable = keyMode === 'major' ? ROMAN_MAJOR_R47 : ROMAN_MINOR_R47;
+  const symbol = baseTable[interval] ?? '?';
+  if (sq === 'm') return symbol.toLowerCase();
+  if (sq === 'd') return symbol.toLowerCase() + '°';
+  return symbol;
+}
+
+interface ChordSummary {
+  uniqueChords: { name: string; count: number; roman: string }[];
+  progressions: { chords: string[]; romans: string[]; count: number }[];
+  totalFolded: number;
+}
+
+function summarizeChords(
+  history: { name: string; chordId: string }[],
+  keyRoot: number | null,
+  keyMode: 'major' | 'minor' | null,
+): ChordSummary {
+  if (history.length === 0) return { uniqueChords: [], progressions: [], totalFolded: 0 };
+
+  // Step 1: 折叠相邻同根（依据 chordId 的 root pc）
+  const folded: { name: string; rootPc: number; quality: string }[] = [];
+  for (const h of history) {
+    const rootPc = parseRootPc(h.chordId);
+    if (rootPc < 0) continue;
+    // 从 id 推 quality (round46 简化版 — 只剩 maj/min)
+    const id = h.chordId;
+    const quality = (id.length >= 2 && (id.endsWith('m') || id === id.slice(0,1) + 'bm') && !id.endsWith('aj'))
+      ? 'minor' : 'major';
+    const last = folded[folded.length - 1];
+    if (last && last.rootPc === rootPc) continue;
+    folded.push({ name: h.name, rootPc, quality });
+  }
+
+  // Step 2: 频次 top 6
+  const countMap = new Map<string, { rootPc: number; quality: string; count: number }>();
+  for (const f of folded) {
+    const e = countMap.get(f.name);
+    if (e) e.count++;
+    else countMap.set(f.name, { rootPc: f.rootPc, quality: f.quality, count: 1 });
+  }
+  const uniqueChords = [...countMap.entries()]
+    .map(([name, { rootPc, quality, count }]) => ({
+      name,
+      count,
+      roman: keyRoot !== null && keyMode ? toRoman(rootPc, quality, keyRoot, keyMode) : '',
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+
+  // Step 3: 4-chord 重复走向
+  const progMap = new Map<string, { chords: string[]; rootPcs: number[]; qualities: string[]; count: number }>();
+  if (folded.length >= 4) {
+    for (let i = 0; i <= folded.length - 4; i++) {
+      const window = folded.slice(i, i + 4);
+      const key = window.map(w => w.name).join('→');
+      const e = progMap.get(key);
+      if (e) e.count++;
+      else progMap.set(key, {
+        chords: window.map(w => w.name),
+        rootPcs: window.map(w => w.rootPc),
+        qualities: window.map(w => w.quality),
+        count: 1,
+      });
+    }
+  }
+  const progressions = [...progMap.values()]
+    .filter(p => p.count >= 2)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+    .map(p => ({
+      chords: p.chords,
+      romans: keyRoot !== null && keyMode
+        ? p.rootPcs.map((r, i) => toRoman(r, p.qualities[i], keyRoot, keyMode))
+        : [],
+      count: p.count,
+    }));
+
+  return { uniqueChords, progressions, totalFolded: folded.length };
+}
+
+function ChordSummaryCard({ summary }: { summary: ChordSummary }) {
+  if (summary.uniqueChords.length === 0) return null;
+  return (
+    <div className="card">
+      <h2>📊 走向总结</h2>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginBottom: 10 }}>
+        已合并连续重复 · 折叠后 {summary.totalFolded} 个和弦
+      </div>
+
+      {/* 主要和弦（频次） */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>主要和弦</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {summary.uniqueChords.map(c => (
+            <div key={c.name} style={{
+              display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+              padding: '4px 10px', borderRadius: 8,
+              background: 'var(--bg-soft)', border: '1px solid var(--line-soft)',
+              minWidth: 50,
+            }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--brand)' }}>{c.name}</span>
+              {c.roman && <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'serif' }}>{c.roman}</span>}
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>×{c.count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 重复走向段 */}
+      {summary.progressions.length > 0 && (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>主要走向（重复出现）</div>
+          {summary.progressions.map((p, i) => (
+            <div key={i} style={{
+              padding: '8px 10px', marginBottom: 6, borderRadius: 8,
+              background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)',
+            }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)', letterSpacing: 1 }}>
+                {p.chords.join(' → ')}
+              </div>
+              {p.romans.length > 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'serif', letterSpacing: 1 }}>
+                  {p.romans.join(' → ')}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>出现 {p.count} 次</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+// ============ /Round 47 ============
+
 
 function addChordEvidence(prev: number[], root: number, quality: string): number[] {
   const out = prev.slice();
@@ -675,20 +835,23 @@ function KeyDetector() {
   const stableKeyRef = useRef<{ key: string; since: number } | null>(null);
   const lastPushedHintRef = useRef<string | null>(null);
   const [hintPushed, setHintPushed] = useState<string | null>(null);
+  // Round 46: 累积 committed 和弦序列，复用 LiveChordRecognizer 同款 round40 算法（与"听和弦"输出一致）
+  const chordSeqRef = useRef<{ rootPc: number; quality: string; name: string; chordId: string }[]>([]);
+  const [r40Key, setR40Key] = useState<{ root: number; mode: 'major' | 'minor'; score: number; ratio: number; name: string } | null>(null);
+  // Round 47: chord history for summary
+  const [keyHistory, setKeyHistory] = useState<{ name: string; chordId: string }[]>([]);
 
   const start = useCallback(async () => {
+    // Round 46: 不再 probeMic
     setMicState('requesting');
-    const perm = await probeMic();
-    if (perm !== 'granted') {
-      setMicState(perm);
-      return;
-    }
-    setMicState('granted');
     setPcCounts(new Array(12).fill(0));
     setChordEvidence(new Array(24).fill(0));
     setChordEvidenceCount(0);
     setDominantChordCounts({});
     setElapsed(0);
+    chordSeqRef.current = [];
+    setR40Key(null);
+    setKeyHistory([]);
     startRef.current = Date.now();
     lastSampleTsRef.current = 0;
     timerRef.current = window.setInterval(() => {
@@ -696,7 +859,8 @@ function KeyDetector() {
     }, 1000);
 
     chordDetector.setProfile('live');
-    await chordDetector.start((event: ChordDetectEvent) => {
+    try {
+      await chordDetector.start((event: ChordDetectEvent) => {
       // justCommitted 不受节流影响，独立累积和弦证据
       if (event.justCommitted) {
         const { chord } = event.justCommitted;
@@ -713,6 +877,27 @@ function KeyDetector() {
             return addChordEvidence(decayed, rootPc, chord.quality);
           });
           setChordEvidenceCount(c => c + 1);
+
+          // Round 46: 喂入 round40 算法（与 LiveChordRecognizer 一致）
+          chordSeqRef.current.push({ rootPc, quality: chord.quality, name: chord.name, chordId: chord.id });
+          if (chordSeqRef.current.length > 64) chordSeqRef.current.shift();
+          const r40 = inferKeyFromChords(chordSeqRef.current);
+          if (r40) {
+            const SHARP_N = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+            setR40Key({
+              root: r40.root,
+              mode: r40.mode,
+              score: r40.score,
+              ratio: r40.runnerUpRatio,
+              name: `${SHARP_N[r40.root]} ${r40.mode === 'major' ? '大调' : '小调'}`,
+            });
+          }
+          // Round 47: 累积历史用于走向总结
+          setKeyHistory(h => {
+            const next = [...h, { name: chord.name, chordId: chord.id }];
+            if (next.length > 80) return next.slice(next.length - 80);
+            return next;
+          });
         }
       }
 
@@ -733,7 +918,13 @@ function KeyDetector() {
         });
       }
     });
-    setListening(true);
+      setMicState('granted');
+      setListening(true);
+    } catch (err: any) {
+      const name = err?.name || '';
+      setMicState(name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError' ? 'denied' : 'error');
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -786,17 +977,28 @@ function KeyDetector() {
     );
   }
   keyScores.sort((a, b) => b.score - a.score);
-  const bestKey = totalCounts > 5 ? keyScores[0] : null;
+  // Round 46: 主路径用 round40 chord-sequence 算法（与 LiveChordRecognizer 一致）
+  //   keyScores (Krumhansl chroma 频次) 保留作 top3 候选展示和兜底
+  const bestKey = r40Key
+    ? { root: r40Key.root, mode: r40Key.mode, score: r40Key.score, name: r40Key.name }
+    : totalCounts > 5 ? keyScores[0] : null;
   const top3 = keyScores.slice(0, 3);
 
   // 置信度评级：top1/top2 比值越大越自信
   const top1Score = keyScores[0]?.score || 0;
   const top2Score = keyScores[1]?.score || 0;
-  const ratio = top2Score > 0 ? top1Score / top2Score : Infinity;
+  const krumhanslRatio = top2Score > 0 ? top1Score / top2Score : Infinity;
+  const ratio = r40Key ? r40Key.ratio : krumhanslRatio;
   const keyConfidenceRating = bestKey ? (ratio > 1.20 ? 'A' : ratio > 1.08 ? 'B' : 'C') : 'C';
   const keyRatingColor = keyConfidenceRating === 'A' ? 'var(--success)' : keyConfidenceRating === 'B' ? 'var(--brand)' : 'var(--text-muted)';
 
   useEffect(() => { bestKeyRef.current = bestKey; }, [bestKey]);
+
+  // Round 47: KeyDetector 也提供走向总结
+  const keySummary = useMemo(
+    () => summarizeChords(keyHistory, bestKey ? bestKey.root : null, bestKey ? bestKey.mode : null),
+    [keyHistory, bestKey],
+  );
 
   // Round 18: 检测到的调性稳定 ≥ 3s 后，反馈给 chordDetector 作为 prior
   useEffect(() => {
@@ -832,14 +1034,17 @@ function KeyDetector() {
       <div className="tuner-result" style={{ minHeight: 80 }}>
         {bestKey ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div className="tuner-note" style={{ color: 'var(--success)' }}>{bestKey.name}</div>
+              <span style={{ opacity: 0.7, fontSize: 14, color: 'var(--text-body)' }}>
+                / {getRelativeKeyName(bestKey.root, bestKey.mode)}
+              </span>
               <span style={{
                 display: 'inline-block', padding: '2px 8px', borderRadius: 10,
                 background: keyRatingColor, color: '#fff', fontSize: 11, fontWeight: 700,
               }}>{keyConfidenceRating}</span>
             </div>
-            <div className="tuner-freq">最可能的调性</div>
+            <div className="tuner-freq">关系大小调顺阶等价，二者皆有可能</div>
           </>
         ) : totalCounts > 0 ? (
           <div className="tuner-note" style={{ fontSize: 16, lineHeight: '24px', color: 'var(--text-muted)', textAlign: 'center' }}>正在听… 弹一下吧</div>
@@ -850,12 +1055,15 @@ function KeyDetector() {
         )}
       </div>
 
+      {/* Round 47: 走向总结（与"实时识别和弦"标签的展示一致） */}
+      {keyHistory.length >= 4 && <ChordSummaryCard summary={keySummary} />}
+
       {/* Top 3 候选 */}
       {totalCounts > 5 && (
         <div className="card">
           <h2>候选调性</h2>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
-            证据：chroma · 已识别 {chordEvidenceCount} 个和弦
+            音名频次旁路（Krumhansl）：当结论与主显示不一致时仅供参考 · 已识别 {chordEvidenceCount} 个和弦
           </div>
           {hintPushed && (
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 8 }}>
