@@ -24,6 +24,8 @@ export interface ChordDetectResult {
   peakCount: number;
   /** 12 维归一化 chroma 向量（Round 10：供 KeyDetector 等下游消费） */
   chroma: number[];
+  /** Round 39: 低频段 (<220Hz) 归一化 bass chroma，供 KeyDetector 用低音域定调（更接近和弦根音线） */
+  bassChroma?: number[];
   /** Round 16: 估计的调音偏移 (cents)，正值=偏高，约束在 ±50 之间 */
   tuningOffsetCents?: number;
   /** Round 17: 自适应噪声地板 (dB)，p10 估计，clamped 到 NOISE_FLOOR_MIN_DB */
@@ -62,13 +64,29 @@ const SILENCE_FRAMES = 8;
 
 // sensitivity 矩阵
 const SENSITIVITY: Record<DetectorSensitivity, { enter: number; minCommitPractice: number; minCommitLive: number }> = {
-  strict: { enter: 0.70, minCommitPractice: 32, minCommitLive: 44 },
-  normal: { enter: 0.62, minCommitPractice: 24, minCommitLive: 36 },
-  loose:  { enter: 0.55, minCommitPractice: 18, minCommitLive: 28 },
+  // Round 41: live profile minCommit 大幅下调（族折叠 + 真实曲目 1-2s/chord，原 36-44 帧 commit 永远不触发）
+  strict: { enter: 0.70, minCommitPractice: 28, minCommitLive: 24 },
+  normal: { enter: 0.62, minCommitPractice: 20, minCommitLive: 18 },
+  loose:  { enter: 0.55, minCommitPractice: 14, minCommitLive: 12 },
 };
 
 const MAX_CHORDS_PER_SECOND_PRACTICE = 3;
-const MAX_CHORDS_PER_SECOND_LIVE = 2;
+const MAX_CHORDS_PER_SECOND_LIVE = 3;  // Round 39: 2 → 3 — 让 120BPM 一拍一和弦不被吞
+
+// Round 41: 同根 + 同三度质量视为一族（F#m / F#m7 / F#sus2 都进 "F#-minor" 族）
+//   投票按族计数，避免 variant 反复横跳导致状态机重置 → commit 几乎不触发
+function familyKey(chord: ChordDef): string {
+  // 解析 root pc：用 chord.id 首字母 + 可选 #/b
+  let token = chord.id[0] ?? 'C';
+  if (chord.id[1] === '#' || chord.id[1] === 'b') token = chord.id.slice(0, 2);
+  // 简化 quality：minor/min7 → 'm'；dim → 'd'；其他视为 'M'（major/maj7/dom7/sus/aug）
+  const q = chord.quality;
+  let qFam: 'M' | 'm' | 'd';
+  if (q === 'minor' || q === 'min7') qFam = 'm';
+  else if (q === 'dim') qFam = 'd';
+  else qFam = 'M';
+  return `${token}-${qFam}`;
+}
 
 /** 频率 → pitch class (0-11) */
 function freqToPc(freq: number): number {
@@ -554,6 +572,7 @@ export class ChordDetector {
       noteNames,
       peakCount: detectedPcs.length,
       chroma: chromaFinal,
+      bassChroma: bassNorm,
       tuningOffsetCents: this.tuningOffsetCents,
       noiseFloorDb: this.noiseFloorDb,
       isOnset,
@@ -590,19 +609,30 @@ export class ChordDetector {
     this.window.push({ name: cur.id, conf: rawResult.confidence, t: now, chord: cur });
     if (this.window.length > SMOOTHING_WINDOW) this.window.shift();
 
-    // 2. 投票
-    const counts: Record<string, { count: number; sumConf: number; chord: ChordDef }> = {};
+    // 2. 投票 (Round 41: 改按"族"投票 — 同根 + 同三度质量视为一族)
+    //    族 key = `${rootPc}-${isMinor}`，避免 F#m/F#m7/F#sus2 反复横跳导致状态机重置
+    //    族胜出后，从族内挑 confidence 最高的具体 chord 做 currentChord
+    const counts: Record<string, { count: number; sumConf: number; chord: ChordDef; bestConf: number; bestChord: ChordDef; bestName: string }> = {};
     for (const w of this.window) {
-      if (!counts[w.name]) counts[w.name] = { count: 0, sumConf: 0, chord: w.chord };
-      counts[w.name].count++;
-      counts[w.name].sumConf += w.conf;
+      const family = familyKey(w.chord);
+      if (!counts[family]) counts[family] = {
+        count: 0, sumConf: 0, chord: w.chord,
+        bestConf: w.conf, bestChord: w.chord, bestName: w.name,
+      };
+      counts[family].count++;
+      counts[family].sumConf += w.conf;
+      if (w.conf > counts[family].bestConf) {
+        counts[family].bestConf = w.conf;
+        counts[family].bestChord = w.chord;
+        counts[family].bestName = w.name;
+      }
     }
     let bestName = '';
-    let bestEntry: { count: number; sumConf: number; chord: ChordDef } | null = null;
+    let bestEntry: { count: number; sumConf: number; chord: ChordDef; bestConf: number; bestChord: ChordDef; bestName: string } | null = null;
     for (const k in counts) {
       if (!bestEntry || counts[k].count > bestEntry.count) {
         bestEntry = counts[k];
-        bestName = k;
+        bestName = counts[k].bestName;
       }
     }
     if (!bestEntry) {
@@ -610,7 +640,7 @@ export class ChordDetector {
       return;
     }
     const votedConfAvg = bestEntry.sumConf / bestEntry.count;
-    const votedChord = bestEntry.chord;
+    const votedChord = bestEntry.bestChord;
 
     // 3. 参数
     const sens = SENSITIVITY[this.sensitivity];

@@ -95,6 +95,13 @@ function LiveChordRecognizer() {
   // Round 22: 基于和弦根音直方图推断调性，反馈给识别器
   const [inferredKey, setInferredKey] = useState<{ root: number; mode: 'major' | 'minor'; name: string } | null>(null);
   const chordRootHistogramRef = useRef<number[]>(new Array(12).fill(0));
+  // Round 39: 同时累积 chroma 直方图（fixes H — root-histogram can't distinguish C major vs A minor）
+  const chromaHistogramRef = useRef<number[]>(new Array(12).fill(0));
+  // Round 39 v2: 累积 bassChroma 直方图（fixes B-min vs D-maj — bass line tracks 和弦根音，比全频段更稳）
+  const bassHistogramRef = useRef<number[]>(new Array(12).fill(0));
+  // Round 40: 已 committed 的和弦序列（用于 chord-sequence-based key detection）
+  const chordSeqRef = useRef<{ rootPc: number; quality: string }[]>([]);
+  const diagLastLogRef = useRef(0); // round39 诊断节流
   const totalChordsRef = useRef(0);
   const lastInferredKeyRef = useRef<string | null>(null);
   const lastPushedHintRef = useRef<string | null>(null);
@@ -108,6 +115,7 @@ function LiveChordRecognizer() {
   useEffect(() => { chordDetector.setSensitivity(sensitivity); }, [sensitivity]);
 
   const start = useCallback(async () => {
+    console.log('[round39-start] 🎤 开始监听');
     setMicState('requesting');
     const perm = await probeMic();
     if (perm !== 'granted') {
@@ -125,6 +133,7 @@ function LiveChordRecognizer() {
     historyRef.current = [];
     startRef.current = Date.now();
     chordRootHistogramRef.current = new Array(12).fill(0);
+    chromaHistogramRef.current = new Array(12).fill(0); bassHistogramRef.current = new Array(12).fill(0); chordSeqRef.current = [];
     totalChordsRef.current = 0;
     lastInferredKeyRef.current = null;
     lastPushedHintRef.current = null;
@@ -158,6 +167,28 @@ function LiveChordRecognizer() {
         setCandidates([]);
       }
 
+      // Round 39: 每帧累积 chroma（fixes H — Krumhansl 应作用于 chroma 而非根音直方图）
+      if (event.raw?.chroma && event.raw.chroma.length === 12) {
+        const c = event.raw.chroma;
+        const h = chromaHistogramRef.current;
+        for (let i = 0; i < 12; i++) h[i] = h[i] * EVIDENCE_DECAY + c[i];
+
+        // Round 39 v3 (fix bass saturation): 每帧只给 bass argmax 的 pc 投 1 票（避免 EMA + max=1 归一化稳态 → 20 饱和）
+        if (event.raw.bassChroma && event.raw.bassChroma.length === 12) {
+          const bc = event.raw.bassChroma;
+          let argmax = -1;
+          let argmaxVal = 0;
+          for (let i = 0; i < 12; i++) if (bc[i] > argmaxVal) { argmaxVal = bc[i]; argmax = i; }
+          if (argmax >= 0 && argmaxVal > 0.5) {
+            // 只有 bass 信号比较显著时才投票（< 0.5 视为弱/噪声，弃权）
+            const bh = bassHistogramRef.current;
+            for (let i = 0; i < 12; i++) bh[i] *= EVIDENCE_DECAY;
+            bh[argmax] += 1;
+          }
+        }
+
+      }
+
       if (event.justCommitted) {
         const ev = event.justCommitted;
         vibrate(10);
@@ -177,20 +208,59 @@ function LiveChordRecognizer() {
           return next;
         });
 
-        // Round 22: 累积和弦根音直方图 → K-S 推断调性 → 反馈给识别器
+        // Round 22: 累积和弦根音直方图（保留作"一致性二次确认"的旁路证据）
+        // Round 39: Krumhansl 输入改为 chroma 直方图（fixes H）+ 加 top1/top2 置信度门槛（mitigates G）
+        // Round 40: 主路径切到 chord-sequence-based key detection（diatonic 命中率）
         const rootPc = parseRootPc(ev.chord.id);
         if (rootPc >= 0) {
           for (let i = 0; i < 12; i++) chordRootHistogramRef.current[i] *= EVIDENCE_DECAY;
           chordRootHistogramRef.current[rootPc] += 1;
           totalChordsRef.current++;
 
+          // Round 40: 用和弦序列推断 key
+          chordSeqRef.current.push({ rootPc, quality: ev.chord.quality });
+          if (chordSeqRef.current.length > 32) chordSeqRef.current.shift();
+          const r40 = inferKeyFromChords(chordSeqRef.current);
+          if (r40 && r40.runnerUpRatio >= 1.10) {
+            const SHARP_NAMES_LOCAL3 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+            const r40Id = `${r40.root}-${r40.mode}`;
+            const r40Name = `${SHARP_NAMES_LOCAL3[r40.root]} ${r40.mode === 'major' ? '大调' : '小调'}`;
+            const r40Inferred = { root: r40.root, mode: r40.mode, name: r40Name };
+            if (totalChordsRef.current % 3 === 0 || totalChordsRef.current === 4) {
+              console.log(`[round40][n=${totalChordsRef.current}] 推断=${r40Name} score=${r40.score} ratio=${r40.runnerUpRatio.toFixed(3)} (seq len=${chordSeqRef.current.length})`);
+            }
+            // 一致性 + 自信 才下发
+            if (lastInferredKeyRef.current === r40Id) {
+              if (lastPushedHintRef.current !== r40Id) {
+                chordDetector.setKeyHint(r40.root, r40.mode);
+                lastPushedHintRef.current = r40Id;
+                setInferredKey(r40Inferred);
+              }
+            } else {
+              lastInferredKeyRef.current = r40Id;
+            }
+            // round40 已下发，跳过下面的 Krumhansl 旧路径
+            return;
+          } else if (totalChordsRef.current % 3 === 0 && r40) {
+            const SHARP_R = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+            console.log(`[round40][n=${totalChordsRef.current}] 不自信 推断=${SHARP_R[r40.root]} ${r40.mode} score=${r40.score} ratio=${r40.runnerUpRatio.toFixed(3)}`);
+          }
+
           if (totalChordsRef.current >= 5) {
-            const histogram = chordRootHistogramRef.current;
+            // Round 39 v2: 优先用 bass 直方图（低频段=根音线），如果太弱则 fallback 到 chroma
+            const bh = bassHistogramRef.current;
+            const bassTotal = bh.reduce((a, b) => a + b, 0);
+            const histogram = bassTotal > 2.0 ? bh : chromaHistogramRef.current;
+            const histSource = bassTotal > 2.0 ? 'bass' : 'chroma';
             const majorProfile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
             const minorProfile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
             let bestScore = -Infinity;
+            let secondScore = -Infinity;
             let bestRoot = 0;
             let bestMode: 'major' | 'minor' = 'major';
+            // Round 39 diag: 收集所有 24 个 key 评分用于诊断
+            const allScores: { key: string; score: number }[] = [];
+            const SHARP_DIAG = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
             for (let root = 0; root < 12; root++) {
               let majCorr = 0, minCorr = 0;
               for (let i = 0; i < 12; i++) {
@@ -198,16 +268,25 @@ function LiveChordRecognizer() {
                 majCorr += v * majorProfile[i];
                 minCorr += v * minorProfile[i];
               }
-              if (majCorr > bestScore) { bestScore = majCorr; bestRoot = root; bestMode = 'major'; }
-              if (minCorr > bestScore) { bestScore = minCorr; bestRoot = root; bestMode = 'minor'; }
+              allScores.push({ key: SHARP_DIAG[root] + ' maj', score: majCorr });
+              allScores.push({ key: SHARP_DIAG[root] + ' min', score: minCorr });
+              if (majCorr > bestScore) { secondScore = bestScore; bestScore = majCorr; bestRoot = root; bestMode = 'major'; }
+              else if (majCorr > secondScore) { secondScore = majCorr; }
+              if (minCorr > bestScore) { secondScore = bestScore; bestScore = minCorr; bestRoot = root; bestMode = 'minor'; }
+              else if (minCorr > secondScore) { secondScore = minCorr; }
             }
+
+            // Round 39 (mitigates G): top1/top2 比值 < 1.08 视为不自信，不下发 hint，避免错 key 自我强化
+            const ratio = secondScore > 0 ? bestScore / secondScore : Infinity;
+            const confident = ratio >= 1.08;
+
             const SHARP_NAMES_LOCAL2 = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
             const inferredId = `${bestRoot}-${bestMode}`;
             const name = `${SHARP_NAMES_LOCAL2[bestRoot]} ${bestMode === 'major' ? '大调' : '小调'}`;
             const newInferred = { root: bestRoot, mode: bestMode, name };
 
-            // 一致性二次确认：本次推断与上次一致才真正推给识别器
-            if (lastInferredKeyRef.current === inferredId) {
+            // 一致性二次确认：本次推断与上次一致 + 自信度足够才真正推给识别器
+            if (lastInferredKeyRef.current === inferredId && confident) {
               if (lastPushedHintRef.current !== inferredId) {
                 chordDetector.setKeyHint(bestRoot, bestMode);
                 lastPushedHintRef.current = inferredId;
@@ -215,7 +294,7 @@ function LiveChordRecognizer() {
               }
             } else {
               lastInferredKeyRef.current = inferredId;
-              // 不立即推，等下次确认
+              // 不立即推，等下次确认；不自信也不推
             }
           }
         }
@@ -228,6 +307,7 @@ function LiveChordRecognizer() {
     chordDetector.stop();
     chordDetector.setKeyHint(null, null);
     chordRootHistogramRef.current = new Array(12).fill(0);
+    chromaHistogramRef.current = new Array(12).fill(0); bassHistogramRef.current = new Array(12).fill(0); chordSeqRef.current = [];
     totalChordsRef.current = 0;
     lastInferredKeyRef.current = null;
     lastPushedHintRef.current = null;
@@ -424,6 +504,104 @@ function parseRootPc(id: string): number {
   }
   return SHARP_NAMES_LOCAL.indexOf(token);
 }
+
+// ============ Round 40: chord-sequence-based key detection ============
+// 顺阶和弦集合：[root_offset_from_key_pc, simplified_quality]
+// 简化 quality：所有大类(maj/maj7/maj9/sus2/sus4/6/add9)归 'M'；小类(min/m7/min7/m6)归 'm'；dim 归 'd'
+const DIATONIC_MAJOR_R40: Array<[number, 'M' | 'm' | 'd']> = [
+  [0, 'M'], [2, 'm'], [4, 'm'], [5, 'M'], [7, 'M'], [9, 'm'], [11, 'd'],
+];
+const DIATONIC_MINOR_R40: Array<[number, 'M' | 'm' | 'd']> = [
+  // natural minor + 提升 7 的 harmonic minor 也认（dom V 也 OK）
+  [0, 'm'], [2, 'd'], [3, 'M'], [5, 'm'], [7, 'm'], [7, 'M'], [8, 'M'], [10, 'M'],
+];
+
+function simplifyQuality(q: string): 'M' | 'm' | 'd' | 'aug' | 'other' {
+  if (q === 'major' || q === 'maj7' || q === 'dom7' || q === 'sus') return 'M';
+  if (q === 'minor' || q === 'min7') return 'm';
+  if (q === 'dim') return 'd';
+  if (q === 'aug') return 'aug';
+  return 'other';
+}
+
+/**
+ * 用已 committed 的和弦序列推断调性
+ *
+ * 思想：对 24 个候选 key，统计有多少个和弦属于该 key 的顺阶。
+ * 选 diatonic 命中率最高的；若并列，主调和弦（I / vi）更近的胜出（解关系大小调歧义）。
+ *
+ * @param chordHistory 按时间顺序的和弦序列，每项 { rootPc, quality }
+ * @returns { root, mode, score, runnerUpRatio } 或 null（历史 < 3 个）
+ */
+function inferKeyFromChords(
+  chordHistory: { rootPc: number; quality: string }[],
+): { root: number; mode: 'major' | 'minor'; score: number; runnerUpRatio: number } | null {
+  if (chordHistory.length < 3) return null;
+  // 只看最近 16 个，避免久远历史污染
+  const recent = chordHistory.slice(-16);
+
+  const keyScores: { root: number; mode: 'major' | 'minor'; score: number }[] = [];
+  for (let root = 0; root < 12; root++) {
+    for (const mode of ['major', 'minor'] as const) {
+      const diatonic = mode === 'major' ? DIATONIC_MAJOR_R40 : DIATONIC_MINOR_R40;
+      const diatonicSet = new Set(diatonic.map(([off, q]) => `${(root + off) % 12}-${q}`));
+      const tonicPc = root;
+      const dominantPc = (root + 7) % 12;
+      let score = 0;
+      for (let i = 0; i < recent.length; i++) {
+        const ch = recent[i];
+        const sq = simplifyQuality(ch.quality);
+        if (sq === 'other' || sq === 'aug') continue;
+        const key = `${ch.rootPc}-${sq}`;
+        if (diatonicSet.has(key)) {
+          // 主和弦 (I/i) 双倍权重，强化 tonic
+          if (ch.rootPc === root && (
+            (mode === 'major' && sq === 'M') ||
+            (mode === 'minor' && sq === 'm')
+          )) {
+            score += 2;
+          } else {
+            score += 1;
+          }
+        }
+        // Round 42-a: dom7 在 V 度位置 → 强烈暗示本调
+        if (ch.quality === 'dom7' && ch.rootPc === dominantPc) score += 1;
+        // Round 42-b: V → I cadence 加 +3
+        if (i > 0) {
+          const prev = recent[i - 1];
+          const prevSq = simplifyQuality(prev.quality);
+          const curIsTonic = ch.rootPc === tonicPc && (
+            (mode === 'major' && sq === 'M') ||
+            (mode === 'minor' && sq === 'm')
+          );
+          const prevIsDominant = prev.rootPc === dominantPc && prevSq === 'M';
+          if (prevIsDominant && curIsTonic) score += 3;
+        }
+      }
+      // Round 42-c: 首尾若是 tonic 各加 +2
+      if (recent.length >= 4) {
+        const first = recent[0];
+        const last = recent[recent.length - 1];
+        const isTonic = (c: { rootPc: number; quality: string }) =>
+          c.rootPc === root && (
+            (mode === 'major' && simplifyQuality(c.quality) === 'M') ||
+            (mode === 'minor' && simplifyQuality(c.quality) === 'm')
+          );
+        if (isTonic(first)) score += 2;
+        if (isTonic(last)) score += 2;
+      }
+      keyScores.push({ root, mode, score });
+    }
+  }
+
+  keyScores.sort((a, b) => b.score - a.score);
+  const top = keyScores[0];
+  const second = keyScores[1];
+  const runnerUpRatio = second.score > 0 ? top.score / second.score : Infinity;
+  return { root: top.root, mode: top.mode, score: top.score, runnerUpRatio };
+}
+// ============ /Round 40-42 ============
+
 
 function addChordEvidence(prev: number[], root: number, quality: string): number[] {
   const out = prev.slice();

@@ -1846,3 +1846,73 @@ sed -i '' \
 - ✅ 显式列出 Oracle 假设排序而不是只挑一个
 - ✅ 把"用真实数据再判"作为 round39 入口而非本轮强推
 
+
+### Round 39-42 _2026-05-17_: 真实歌曲驱动的算法重构（chord recognition + key inference）
+
+**用户反馈**
+> "和弦和歌曲定调感觉还是有问题呀，歌曲定调不准，和弦收集也不准"
+
+**调试历程（4 轮迭代）**
+
+**Round 39 - 假设性修复（结果：全部证伪）**
+- 假设 H: Krumhansl 用根音直方图无法区分关系大小调 → 改用 chroma 直方图 → fixture 验证更糟 (D 大调推成 E 小调)
+- 假设 G: key-hint 反馈循环正反馈 → 加 ratio≥1.08 门槛 → 仍无改善
+- 假设 J: MAX_CHORDS_PER_SECOND_LIVE=2 卡 120BPM → 改为 3 → 仍无改善
+- 假设 bassChroma 更稳 → 切到 bass 直方图 → bass argmax 在房间共振下不可靠
+- 加诊断 log 收集真实数据 → **发现 chord-detector 30 秒钢琴曲只 commit 3 次**
+
+**Round 40 - 算法路径切换**
+- 新增 `inferKeyFromChords`：基于已 commit 和弦序列计算各 key 的 diatonic 命中率
+- 主和弦 I/i 双倍权重
+- ratio≥1.10 门槛下发 hint
+- 离线 fixture (Am-F-C-G × 4) 测试 100% 正确
+
+**Round 41 - 暴露并修复 chord-detector commit 死锁**
+- 用 /tmp/glog/canon.wav（355 秒 D 大调卡农 PCM，公有域）端到端跑完整管线
+- **核心发现**：state machine 投票按 `chord.id` 分组，导致 F#m/F#m7/F#sus2 反复横跳，永远凑不齐 commit 帧数。355 秒整曲仅 commit 1 次
+- 修复：投票按"族"分组 (`rootPc + simplifiedQuality`，maj/maj7/dom7/sus → M, min/min7 → m, dim → d)
+- 修复：SENSITIVITY.normal.minCommitLive 36 → 18（卡农 ~2s/chord，原参数永远 commit 不到）
+- 验证：commit 1 → 146 ✅
+
+**Round 42 - cadence 加权**
+- inferKeyFromChords 加三条规则：
+  - V→I cadence: 前后相邻 V→I 加 +3 分
+  - dom7 在 V 位置 +1（A7 → D 大调）
+  - 首尾若是 tonic 各加 +2
+- 验证：D major 推断占比 43% → 62.5%（fixture canon-real-eval）
+
+**本地卡农验证最终结果（npm run eval:canon）**
+| 指标 | 数值 |
+|------|------|
+| 总 commit 数 | 146 |
+| 和弦识别准确率（落在 D 大调顺阶） | **93.2%** |
+| Near miss（根对 quality 错） | 9（B→应Bm，A→应Am，F#→应F#m） |
+| 完全错 | 10 (6.8%) |
+| **最终调性推断** | **D major** ✅（ratio 1.20，自信） |
+| 调性 D major 占整曲推断 | 62.5%（其余跳到 A/G/Bm 近亲调） |
+
+**已知局限**
+1. **关系大小调 / 属调 / 下属调中段闪烁**：D vs A vs Bm vs G 的 diatonic 集合重叠率 80%+，cadence 加权无法完全分辨乐句级局部和声 → 经过 ratio≥1.10 门槛和一致性二次确认大致可滤除
+2. **族投票丢失 quality 精度**：B/Bm、A/Am、F#/F#m 偶尔混淆（9/146 ≈ 6% near miss）— 因为族折叠把 minor 和 major 视为同族投票
+3. **手机外放 + 笔记本麦输入**：低频段共振污染严重，chord 识别帧级稳定性下降；本验证用直接 PCM 文件未覆盖此场景
+
+**关键文件改动**
+- `src/audio/chord-detector.ts`: 新增 `familyKey()` + 投票按族 + SENSITIVITY 参数全面下调
+- `src/pages/ListenPage.tsx`: 新增 `inferKeyFromChords()` 含 cadence 加权 + ratio 门槛 + 一致性确认 + bassChroma 累积旁路（已废弃但保留代码）
+- `scripts/canon-real-eval.mjs`: 离线管线脚本（npm run eval:canon）
+- `scripts/song-fixture-eval.mjs`: 合成 voicing 验证脚本（npm run eval:song）
+
+**测试**
+- `npm run eval:check` ✅ (A/B/C/D/E/F baseline 全保持)
+- `npm run eval:song` ✅ (Am-F-C-G fixture)
+- `node scripts/canon-real-eval.mjs` ✅ (真实 D 大调卡农 PCM → 最终 D major)
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+
+**Karpathy 自检**
+- ✅ 4 轮假设全部由真实数据证伪/证实 — 不靠直觉猜算法
+- ✅ 每轮失败都记录下来作为下一轮的诊断证据
+- ✅ Round 41/42 在 fixture 验证有效后才接入生产
+- ✅ README 诚实写出已知局限，不掩盖近亲调闪烁
+- ⚠️ chord-detector state machine 改动较大，建议下次触碰前先看 commit 历史
+
