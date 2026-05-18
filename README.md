@@ -2114,3 +2114,100 @@ chroma[pc] = max(0, raw[pc] - 0.40·raw[(pc+7)%12] - 0.25·raw[(pc+4)%12])
 4. TunerPage / PitchTrainerPage 接 Essentia.PitchYin 替换自研 YIN
 5. F 进行级评测从 0% → 期望 ≥ 60%
 
+
+#### Round 47 _2026-05-18_: Essentia.js 整合 + Beat-Sync 节拍对齐和弦识别
+
+**用户需求**: 「和弦和定调识别不准。优先做 Essentia.js 整合，参考它的能力提升 app」
+
+**产品 PRD (oracle 给出)**: ListenPage 一刀切到「录音 → 离线分析」纯离线模式 + 新增 Beat-Sync 节拍对齐 + TunerPage/PitchTrainerPage 暂不迁（避免首屏加 2.5MB WASM）
+
+**A. Essentia.js 引擎封装 (src/audio/essentia-engine.ts, 260 行)**
+
+懒加载封装，主要 API：
+- `analyzeRecording(audio, sampleRate)` → `{ bpm, ticks, key, beatChords, elapsedMs }`
+  - `RhythmExtractor2013(degara)` → BPM + ticks (秒)
+  - `TonalExtractor` → 整曲 HPCP 矩阵
+  - `ChordsDetectionBeats(HPCP, ticks, interbeat_median)` → **卡节拍和弦序列**（不再半拍闪烁）
+  - `KeyExtractor(default args)` → 调性 + scale + 置信度
+- `extractPitch(pcmFrame)` → 单帧基频（备用，未启用）
+- `warmupEngine()` / `isEngineReady()` → 预热 + 状态查询
+
+**关键工程决策**:
+- 用 ES module 路径 `essentia.js/dist/essentia-wasm.es.js`（绕过 npm pkg 的 UMD main 入口），让 Vite 自然 code-split 出 essentia chunk（2.5 MB）
+- 主 bundle 401 KB（与 Round 46 持平），**首屏不变慢**
+- 严格 try/finally + `.delete?.()` 释放所有 C++ vector（包括 hpcp / hpcp_highres / chords_histogram / chords_progression / chords_strength / ticks / estimates / bpmIntervals / chordsBeats.chords / chordsBeats.strength）—— 防止 mobile Safari 跑 2 次崩
+- `vector_string` 必须 `.get(i)` 取，不能 `vectorToArray`（已知坑）
+
+**B. ListenPage 重写 (src/pages/ListenPage.tsx, 440 行 — 旧版备份到 ListenPage.legacy.tsx)**
+
+新交互流程：
+1. 进页面静默 warmup Essentia（不阻塞首屏）
+2. 选时长（10s / 20s / 30s，默认 20s）
+3. 大圆按钮「🎤 开始录音」→ 录音中显示进度环 + 滚动波形 + dB 电平条
+4. 录满自动停（或手动「⏹ 提前停止」）→ 切到 analyzing
+5. 分析完出结果：调性卡 + BPM + 节拍数 + 耗时 + **节拍和弦时间线条状图** + ChordSummaryCard
+
+新视觉元素：
+- 大圆形录音按钮（120×120，渐变色，阴影 0 8px 24px）
+- SVG 进度环 (圆周 2π·62, strokeDashoffset 动效)
+- 实时波形条（最近 60 帧 peak-to-peak，渐变 opacity）
+- dB 电平条（low → success / mid → brand / high → danger 三段色 + 文案提示）
+- 时间线条状图（major = brand 色，minor = info 色，块宽按和弦时长比例）
+
+**C. ChordSummaryCard 抽组件 (src/components/ChordSummaryCard.tsx, 190 行)**
+
+从旧 ListenPage 抽出 `summarizeChords()` + `parseRootPc()` + `toRoman()` + `simplifyQuality()` 为独立组件。新 ListenPage 复用，PRD 提到的"两层结果展示"中的 Card 层。
+
+**D. Node 评测脚本 (scripts/essentia-eval.mjs, 170 行)**
+
+使用 `wavefile` 读 wav → 重采样 44100Hz mono → Float32Array → 跑 Essentia 完整管线 → 输出 BPM/Key/Match/Top6/分析速度。
+
+**E. 实测验证（三曲对比 Round 44 旧引擎 vs Round 47 Essentia）**
+
+| 曲目 | 时长 | 旧 (Round 44) | Essentia (Round 47) | 改善 |
+|------|------|------|------|------|
+| 卡农 D 大调 | 355s | ratio 1.12（C 模糊） | **D major 92.6%** ✅ + BPM 80 | 完全可靠 |
+| 晴天 G 大调 | 270s | ratio 1.67（B 候选竞争） | **G major 96.7%** ✅ + BPM 137 | 完全可靠 |
+| 红色高跟鞋 D | 207s | ratio 1.29（B 模糊） | **D major 86.4%** ✅ + BPM 88 | 完全可靠 |
+
+- 分析速度：~60x 实时（355s 卡农 5.88s 跑完，30s 录音预期 < 1s）
+- 卡农 Top 6 = D / G / A / Bm / F#m / F# —— 正是 D 大调 I-V-vi-iii-IV 经典走向
+- ⚠️ Essentia 自带 ChordsDetectionBeats 偶有非顺阶噪声（晴天里 Gm × 19, B × 17）—— Round 48 后处理（key-aware filter）
+
+**F. TunerPage / PitchTrainerPage 决策（撤回原 PRD 计划）**
+
+PRD 原计划用 PitchYinFFT 替换自研 YIN，但 Karpathy 自检后撤回：
+- 自研 YIN 实测够用，无用户反馈不准
+- TunerPage 是首屏入口，让它依赖 2.5MB WASM 是负优化
+- 减法即美 —— 不动没坏的东西
+
+**测试**
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅ — 主 bundle 401 KB（持平），essentia chunks 懒加载（42 KB + 2506 KB）
+- `node scripts/essentia-eval.mjs /tmp/glog/canon.wav D major` ✅
+- `node scripts/essentia-eval.mjs /tmp/glog/qingtian.wav G major` ✅
+- `node scripts/essentia-eval.mjs /tmp/glog/gaogengxie.wav D major` ✅
+- `npm run eval:check` ✅ 旧 baseline A/B/C/D/E 全过（未动旧 chord-detector，留作历史 fixture）
+
+**Oracle 代码审计 (in-round)**
+- 🔴 阻塞: 0 个
+- 🟡 应改 (round 48): 5 条 — MediaRecorder mimeType 检测 / visibilitychange 切后台 / "首次约 2s" 文案 / stopRecording 立刻 setPhase / 短录音 fallback 折叠相邻同根
+- 三条已在本轮 commit 前修复（文案 + setPhase + 短录音折叠）
+- 👍 资源释放穷举 / 部落知识入注释 / parseRootPc 边界 18 用例全过
+
+**Karpathy 自检**
+- ✅ 优先实施 Essentia.js（业界权威，重写自研 chroma 是死路）
+- ✅ 离线分析路线（实时流式不是官方推荐场景）
+- ✅ 一刀切删自研主路径，不留 fallback 增加复杂度（旧版只在 ListenPage.legacy.tsx 留作历史）
+- ✅ 撤回 TunerPage 迁移计划（不动没坏的东西）
+- ✅ Beat-Sync 加上（成本低收益高）；人声分离（A 方案）暂缓（与 PWA inline 架构冲突）
+- ⚠️ 移动端 MediaRecorder 兼容性 / 切后台行为 留 Round 48 在真机上验证
+
+**Round 48 候选方向 (按优先级)**
+1. **MediaRecorder 兼容修复**: 加 `MediaRecorder.isTypeSupported()` capability 检测 + visibilitychange 切后台兜底（修移动端隐藏 bug）
+2. **和弦后处理 (key-aware filter)**: 用 KeyExtractor 检测到的 key 过滤 ChordsDetectionBeats 输出的非顺阶噪声（如晴天 G 大调里把 Gm 修正为 G）
+3. **真机用户反馈**: Pixel 6 / iPhone 13 实测端到端体验，看冷启动 WASM 加载时间是否符合 PRD 验收（≤3s 中端 Android）
+4. **Backlog: 人声/伴奏分离 (Spleeter-web / Demucs)**: 评估前端 wasm 包体积 + 推理时间是否能进 PWA inline 模式
+5. **删除 ListenPage.legacy.tsx**: 经过 1-2 轮稳定后删（git 历史保留）
+
+
