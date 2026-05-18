@@ -422,7 +422,9 @@ function LiveChordRecognizer() {
             </div>
             {inferredKey && (
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                推断调性: {inferredKey.name}（已反馈给识别器，提升后续调内和弦准确度）
+                推断调性: {inferredKey.name}
+                <span style={{ opacity: 0.7 }}> / {getRelativeKeyName(inferredKey.root, inferredKey.mode)}</span>
+                （关系大小调顺阶等价，二者皆有可能；已反馈识别器）
               </div>
             )}
             <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => {
@@ -491,6 +493,21 @@ function LiveChordRecognizer() {
 
 /* ================ 听曲定调 ================ */
 const SHARP_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+/** Round 43: 返回关系大小调的另一面名字 — D major ↔ B minor 等。
+ * 关系小调：(major_root + 9) % 12
+ * 关系大调：(minor_root + 3) % 12
+ * 用于在 UI 上同时标注两种调性，承认算法在 vi-IV-V 走向下两调结构性等价的事实。
+ */
+function getRelativeKeyName(root: number, mode: 'major' | 'minor'): string {
+  if (mode === 'major') {
+    const relMinorRoot = (root + 9) % 12;
+    return `${SHARP_NAMES_LOCAL[relMinorRoot]} 小调`;
+  } else {
+    const relMajorRoot = (root + 3) % 12;
+    return `${SHARP_NAMES_LOCAL[relMajorRoot]} 大调`;
+  }
+}
 const FLAT_TO_SHARP_LOCAL: Record<string,string> = { Bb:'A#', Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#' };
 
 function parseRootPc(id: string): number {

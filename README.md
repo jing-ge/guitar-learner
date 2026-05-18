@@ -1938,3 +1938,61 @@ sed -i '' \
 
 **实际意义**：用户拿"听歌识别"功能听 95% 的流行歌曲应该都能正确推断调性。
 
+
+#### Round 43 _2026-05-17_: 关系大小调 UI 同时显示（红色高跟鞋测试驱动）
+
+**测试发现 - 蔡健雅《红色高跟鞋》原调 D major (核实多个吉他谱站)**:
+
+| 指标 | 数值 |
+|------|------|
+| 总 commit | 57 |
+| 和弦识别准确率（D 大调顺阶内） | **91.2%** |
+| 完全错 | 8.8%（E、G#m7、Fmaj7 等少量）|
+| **最终 key 推断** | **D major ✓** |
+| 整曲 ground truth 占比 | **5.5%** ⚠️ |
+| **真实推断分布 top1** | **B minor 58.2%**（D 大调的关系小调）|
+
+**为什么红色高跟鞋判成 B minor？**
+
+副歌走向 G-A-Bm（即 IV-V-vi），**很少回到 I (D)**，57 个 commit 里：
+- Bm7 出现 11 次
+- Gmaj7 13 次
+- D / Dmaj7 仅 4 次
+
+cadence 加权（V→I）几乎不触发，tonic 加权失效。**算法看到的是 Bm 为"中心和弦"**，推断为 B minor 在音乐学上**完全合理**（vi-IV-V 是关系小调里 i-VI-VII 的等价表达）。
+
+**三曲对比总结**:
+
+| 曲目 | Ground truth | 和弦准确 | 推断分布 top1 | 判定 |
+|------|------|------|------|------|
+| 卡农 D major (Pachelbel, 巴洛克) | D major | 93.2% | D major 62.5% | ✓ 最终对，中段闪烁近亲调 |
+| 晴天 G major (周杰伦, 流行)| G major | 91.8% | **G major 98.3%** | ✓ 几乎完美 |
+| 红色高跟鞋 D major (蔡健雅, vi-IV-V 流行) | D major | 91.2% | **B minor 58.2%** | ⚠️ 判关系小调 |
+
+**算法本质局限（不可避免）**:
+
+D major 和 B minor 的顺阶集合完全重叠（C major / A minor 同理）。**仅看和弦序列无法区分**关系大小调，需要旋律信息（首尾停留音、leading tone 出现频率）。Round 40-42 加的 cadence 加权只在 V→I 走向上有效。
+
+**Round 43 解决方案 - 承认局限,UI 同时展示**
+
+```typescript
+function getRelativeKeyName(root, mode): string {
+  if (mode === 'major') return `${SHARP[(root + 9) % 12]} 小调`;  // D → Bm
+  return `${SHARP[(root + 3) % 12]} 大调`;                          // Bm → D
+}
+```
+
+UI 显示从 `推断调性: D 大调` 改为 `推断调性: D 大调 / B 小调（关系大小调顺阶等价，二者皆有可能）`。
+
+这是诚实交付 — 不假装算法能在结构性等价的情况下二选一，让用户自行结合音乐感判断。
+
+**测试**
+- `node scripts/canon-real-eval.mjs /tmp/glog/gaogengxie.wav 2 major` ✅
+- 算法不变，仅 UI 渲染层加 helper + 标签
+- `npx tsc --noEmit` ✅
+
+**Karpathy 自检**
+- ✅ 不强行加更多消歧规则（如 leading tone 检测、首尾加权等）— 复杂度上升而效益不确定
+- ✅ 承认算法限制，UI 上诚实展示，把判断权还给用户
+- ✅ 不动核心算法，仅展示层 6 行 helper + 1 行 UI 调整
+
