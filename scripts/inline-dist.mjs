@@ -27,13 +27,18 @@ const collectedJs = [];
 /**
  * 把 JS 代码转义成可以安全嵌入 <script>...</script> 的形式：
  *   - </script>  --> <\/script>   (否则 HTML parser 会提前结束 script 标签)
+ *   - <script    --> <\script     (嵌套 script 防御：React DOM 内部包含 "<script><\/script>"
+ *                                  字面量, WebView 会把 <script> 识别为开标签 → 整段 JS 被截断)
  *   - <!--       --> <\!--        (老浏览器把 <!-- 当注释开始；也会破坏后续解析)
- *   - <script    --> <\script     (嵌套 script 防御，理论上不需要但保险)
  * 这是 W3C/HTML5 规范里 inline JS 的标准做法。
+ *
+ * Round 50.1 修复: 之前注释提了 <script 嵌套防御但实现里漏了, 导致 Android WebView 黑屏
+ *                 (React DOM 18 含 "<script><\/script>" 字面量, Chrome 桌面宽容但 WebView 严格)
  */
 function escapeForInlineScript(code) {
   return code
     .replace(/<\/(script\b)/gi, '<\\/$1')
+    .replace(/<(script\b)/gi, '<\\$1')
     .replace(/<!--/g, '<\\!--');
 }
 
@@ -89,6 +94,20 @@ if (collectedJs.length > 0) {
 
 writeFileSync(htmlPath, html);
 console.log('[inline-dist] wrote', htmlPath, `(${(html.length / 1024).toFixed(1)} kB total)`);
+
+// Round 50.1 回归保护: 检查 <script>/</script> 配对, 防止 inline JS 里漏转义的字面量
+//                    把 HTML parser 截断 (Android WebView 黑屏的元凶)
+const scriptOpenCount = (html.match(/<script(?:\s[^>]*)?>/g) ?? []).length;
+const scriptCloseCount = (html.match(/<\/script>/g) ?? []).length;
+if (scriptOpenCount !== scriptCloseCount) {
+  console.error(
+    `[inline-dist] ❌ <script> 标签配对失败: open=${scriptOpenCount}, close=${scriptCloseCount}`
+  );
+  console.error('       这通常意味着 inline JS 里有未转义的 <script> 或 </script> 字面量');
+  console.error('       检查 escapeForInlineScript() 是否覆盖了 React/库代码里的字符串字面量');
+  process.exit(1);
+}
+console.log(`[inline-dist] script tag pairing OK (${scriptOpenCount} pairs)`);
 
 // 删除 dist/assets 下被 inline 的 js/css（保留 icon 等其它资产）
 const assetsDir = join(distDir, 'assets');
