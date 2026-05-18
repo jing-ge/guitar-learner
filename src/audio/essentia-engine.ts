@@ -262,6 +262,37 @@ export async function analyzeRecording(
   }
 }
 
+// ============ Round 50: Onset 检测 (节奏评分) ============
+
+/**
+ * 从录音中检测起音点 (onset) — 用 Essentia.OnsetRate 算法
+ *
+ * @param audio Float32Array, 必须是 44100 Hz 单声道
+ * @returns onsets 时间戳数组（秒，相对录音开头）+ onsetRate (onsets/秒)
+ *
+ * 用途: 节奏稳定度评分 — 与节拍器拍点最近邻匹配, 算每拍偏差 ms
+ *
+ * 注意:
+ *   - OnsetRate 内部用 hfc + complex 两种 detection function 综合
+ *   - 必须 44100Hz, 否则结果不可信 (essentia 文档明确要求)
+ *   - 空信号会抛, caller 需 try/catch
+ */
+export async function detectOnsets(
+  audio: Float32Array,
+): Promise<{ onsets: number[]; onsetRate: number }> {
+  const essentia = await loadEssentia();
+  const audioVec = essentia.arrayToVector(audio);
+  let result: any = null;
+  try {
+    result = essentia.OnsetRate(audioVec);
+    const onsets = Array.from(essentia.vectorToArray(result.onsets)) as number[];
+    return { onsets, onsetRate: result.onsetRate as number };
+  } finally {
+    try { audioVec.delete?.(); } catch {}
+    try { result?.onsets?.delete?.(); } catch {}
+  }
+}
+
 // ============ 单帧基频 (给 Tuner / PitchTrainer) ============
 
 // ============ Round 48: key-aware 和弦后处理 ============

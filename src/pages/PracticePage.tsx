@@ -8,6 +8,7 @@ import { vibrate, vibratePattern } from '../utils/haptic';
 import { getTodayStats, getRecentDays, recordSession } from '../utils/progress';
 import PitchTrainerPage from './PitchTrainerPage';
 import ChordEarTrainerPage from './ChordEarTrainerPage';
+import RhythmScoreTrainer from '../components/RhythmScoreTrainer';
 
 type Tab = 'quiz' | 'fifths' | 'caged' | 'metronome' | 'rhythm' | 'songs' | 'pitch' | 'chord-ear' | 'stats';
 
@@ -32,7 +33,7 @@ const TRAINING_MENU: MenuItem[] = [
 
 function renderTrainingContent(tab: Tab) {
   if (tab === 'metronome') return <Metronome />;
-  if (tab === 'rhythm') return <RhythmPatterns />;
+  if (tab === 'rhythm') return <><RhythmPatterns /><RhythmScoreTrainer /></>;
   if (tab === 'songs') return <SongChords />;
   if (tab === 'caged') return <CAGEDSystem />;
   if (tab === 'fifths') return <FifthsQuiz />;

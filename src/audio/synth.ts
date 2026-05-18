@@ -234,9 +234,14 @@ class GuitarSynth {
     osc.start(now);
     osc.stop(now + 0.08);
 
+    // Round 50.2 oracle #5: 之前固定 200ms 后 disconnect, 但调用 click(true, futureTime)
+    // 预约多个未来 click 时, 全部 200ms 后被 disconnect → 节点被断开, osc.start 仍会被 schedule
+    // 但音频路径已断 → 听不到声 (节拍器后半段哑火)
+    // 修复: disconnect 时刻应在 osc 实际播完之后, 不是从 now (clock time) 起计 200ms
+    const disconnectDelayMs = Math.max(200, (now - ctx.currentTime) * 1000 + 200);
     setTimeout(() => {
       try { osc.disconnect(); shaper.disconnect(); g.disconnect(); } catch {}
-    }, 200);
+    }, disconnectDelayMs);
   }
 }
 
