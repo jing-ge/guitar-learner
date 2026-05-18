@@ -27,7 +27,16 @@ import { fftRealToComplex, magnitudeSpectrum } from './lib/fft.mjs';
 const SR = 22050;
 const FFT = 8192;
 const HOP = 2048;                // ~93ms 帧步（与 chord-detector AnalyserNode 实际帧率近似）
-const WAV_PATH = '/tmp/glog/canon.wav';
+
+// ============== 命令行参数 ==============
+// 用法: node scripts/canon-real-eval.mjs [wav_path] [expected_key_root_pc] [expected_mode]
+// 默认: /tmp/glog/canon.wav, D major
+//   pc: 0=C 1=C# 2=D 3=D# 4=E 5=F 6=F# 7=G 8=G# 9=A 10=A# 11=B
+//   mode: 'major' | 'minor'
+const argv = process.argv.slice(2);
+const WAV_PATH = argv[0] || '/tmp/glog/canon.wav';
+const EXPECTED_KEY_PC = argv[1] !== undefined ? Number(argv[1]) : 2;
+const EXPECTED_KEY_MODE = argv[2] || 'major';
 
 const CHROMA_MIN_FREQ = 70;
 const CHROMA_MAX_FREQ = 2000;
@@ -475,58 +484,48 @@ for (const r of r40Trace.filter((_, i) => i === 0 || i === r40Trace.length-1 || 
   console.log(`    t=${r.t.toFixed(1)}s n=${r.n.toString().padStart(3)} ${r.key.padEnd(10)} score=${r.score} ratio=${r.ratio.toFixed(3)} ${ok}`);
 }
 
-const dMajorR40 = r40Trace.filter(r => r.key === 'D major').length;
-console.log(`\n  D major 在 ${r40Trace.length} 次推断中占 ${dMajorR40} 次 (${(dMajorR40*100/Math.max(1,r40Trace.length)).toFixed(1)}%)`);
+const expectedKeyName = `${SHARP[EXPECTED_KEY_PC]} ${EXPECTED_KEY_MODE}`;
+const dMajorR40 = r40Trace.filter(r => r.key === expectedKeyName).length;
+console.log(`\n  ${expectedKeyName} 在 ${r40Trace.length} 次推断中占 ${dMajorR40} 次 (${(dMajorR40*100/Math.max(1,r40Trace.length)).toFixed(1)}%)`);
 
-// ============ 和弦准确率评估（卡农 D major ground truth）============
-// 卡农基本走向: D - A - Bm - F#m - G - D - G - A，每和弦 ~2 秒
-// 简化判断：committed chord 的 (rootPc, simplifiedQuality) 是否落在 D 大调顺阶
-const DIATONIC_D_MAJOR = new Set([
-  '2-M',  // D
-  '4-m',  // Em
-  '6-m',  // F#m
-  '7-M',  // G
-  '9-M',  // A
-  '11-m', // Bm
-  '1-d',  // C#dim
-]);
+// ============ 和弦准确率评估（基于命令行 ground truth key）============
+// 动态构建调内顺阶（major: I ii iii IV V vi vii°; minor: i ii° III iv v VI VII）
+const DIATONIC_OFFSETS_MAJOR = [[0,'M'],[2,'m'],[4,'m'],[5,'M'],[7,'M'],[9,'m'],[11,'d']];
+const DIATONIC_OFFSETS_MINOR = [[0,'m'],[2,'d'],[3,'M'],[5,'m'],[7,'m'],[8,'M'],[10,'M']];
 
-// 卡农 8-chord 期望集合（更严格：必须是这 6 个之一）
-const CANON_EXPECTED = new Set([
-  '2-M',  // D
-  '9-M',  // A
-  '11-m', // Bm
-  '6-m',  // F#m
-  '7-M',  // G
-]);
+const diatonicOffsets = EXPECTED_KEY_MODE === 'major' ? DIATONIC_OFFSETS_MAJOR : DIATONIC_OFFSETS_MINOR;
+const DIATONIC_SET = new Set(diatonicOffsets.map(([o, q]) => `${(EXPECTED_KEY_PC + o) % 12}-${q}`));
+// 最常用 6 和弦 = 顺阶里去掉 vii° / minor 的 ii°（diminished 在通俗音乐里少见）
+const COMMON_OFFSETS = diatonicOffsets.filter(([_, q]) => q !== 'd');
+const COMMON_EXPECTED = new Set(COMMON_OFFSETS.map(([o, q]) => `${(EXPECTED_KEY_PC + o) % 12}-${q}`));
 
 let diatonicHits = 0;
-let canonExpectedHits = 0;
+let commonHits = 0;
 let nearMissCount = 0; // 同根但 quality 错（B→Bm）
 const wrongList = [];
 
 for (const h of committedHistory) {
   const sq = simplifyQuality(h.quality);
   const key = `${h.rootPc}-${sq}`;
-  if (DIATONIC_D_MAJOR.has(key)) diatonicHits++;
-  if (CANON_EXPECTED.has(key)) canonExpectedHits++;
+  if (DIATONIC_SET.has(key)) diatonicHits++;
+  if (COMMON_EXPECTED.has(key)) commonHits++;
 
   // near miss: root 在期望集中但 quality 错（如 11-M B 应为 11-m Bm）
-  const rootInExpected = [...CANON_EXPECTED].some(k => k.startsWith(`${h.rootPc}-`));
-  if (rootInExpected && !CANON_EXPECTED.has(key)) {
+  const rootInExpected = [...COMMON_EXPECTED].some(k => k.startsWith(`${h.rootPc}-`));
+  if (rootInExpected && !COMMON_EXPECTED.has(key)) {
     nearMissCount++;
     wrongList.push({ name: h.name, expected: `根 ${SHARP[h.rootPc]} 但 quality 不符` });
   } else if (!rootInExpected) {
-    wrongList.push({ name: h.name, expected: `根 ${SHARP[h.rootPc]} 不在卡农 6 和弦内` });
+    wrongList.push({ name: h.name, expected: `根 ${SHARP[h.rootPc]} 不在 ${expectedKeyName} 常用 6 和弦内` });
   }
 }
 
-console.log(`\n=== 和弦识别准确率（卡农 ground truth）===`);
+console.log(`\n=== 和弦识别准确率（ground truth = ${expectedKeyName}）===`);
 console.log(`  总 commit 数: ${committedHistory.length}`);
-console.log(`  落在 D 大调顺阶: ${diatonicHits} (${(diatonicHits*100/committedHistory.length).toFixed(1)}%)`);
-console.log(`  落在卡农 6 和弦 (D/A/Bm/F#m/G/Em): ${canonExpectedHits} (${(canonExpectedHits*100/committedHistory.length).toFixed(1)}%)`);
-console.log(`  Near miss (根对 quality 错，如 B 应为 Bm): ${nearMissCount}`);
-const wrongOut = committedHistory.length - canonExpectedHits;
+console.log(`  落在调内顺阶: ${diatonicHits} (${(diatonicHits*100/committedHistory.length).toFixed(1)}%)`);
+console.log(`  落在常用 6 和弦（去除 dim）: ${commonHits} (${(commonHits*100/committedHistory.length).toFixed(1)}%)`);
+console.log(`  Near miss (根对 quality 错): ${nearMissCount}`);
+const wrongOut = committedHistory.length - commonHits;
 console.log(`  完全错: ${wrongOut} (${(wrongOut*100/committedHistory.length).toFixed(1)}%)`);
 
 // 错答前 10
@@ -545,21 +544,28 @@ committedHistory.forEach((h, i) => {
 console.log(`\n=== Key 推断收敛历史 ===`);
 console.log(`(after each commit)\n`);
 keyHistory.forEach(k => {
-  const okFlag = k.key === 'D major' ? '✅' : '';
+  const okFlag = k.key === expectedKeyName ? '✅' : '';
   console.log(`  n=${k.afterCommit.toString().padStart(2)} ${k.key.padEnd(10)} score=${k.score.toString().padStart(2)} ratio=${k.ratio.toFixed(3)} ${okFlag}  top3: ${k.top}`);
 });
 
 const finalKey = keyHistory.length > 0 ? keyHistory[keyHistory.length - 1] : null;
 console.log(`\n=== 最终判断 ===`);
 if (finalKey) {
-  const isD = finalKey.key === 'D major';
+  const isOk = finalKey.key === expectedKeyName;
   console.log(`  最后推断: ${finalKey.key} ratio=${finalKey.ratio.toFixed(3)}`);
-  console.log(`  Ground truth: D major`);
-  console.log(`  ${isD ? '✅ 正确' : '❌ 错误'}`);
+  console.log(`  Ground truth: ${expectedKeyName}`);
+  console.log(`  ${isOk ? '✅ 正确' : '❌ 错误'}`);
 } else {
   console.log(`  没有产生 key 推断（commit 太少）`);
 }
 
-// 统计：D major 在 keyHistory 中出现多少次
-const dMajorCount = keyHistory.filter(k => k.key === 'D major').length;
-console.log(`\n  D major 在 ${keyHistory.length} 次推断中占 ${dMajorCount} 次 (${(dMajorCount*100/Math.max(1,keyHistory.length)).toFixed(1)}%)`);
+// 统计：ground truth key 在 keyHistory 中出现多少次
+const gtCount = keyHistory.filter(k => k.key === expectedKeyName).length;
+console.log(`\n  ${expectedKeyName} 在 ${keyHistory.length} 次推断中占 ${gtCount} 次 (${(gtCount*100/Math.max(1,keyHistory.length)).toFixed(1)}%)`);
+
+// 推断分布 top
+const inferredDist = {};
+for (const k of keyHistory) inferredDist[k.key] = (inferredDist[k.key] || 0) + 1;
+const distSorted = Object.entries(inferredDist).sort((a,b) => b[1]-a[1]).slice(0, 5);
+console.log(`\n  推断分布 top-5:`);
+for (const [name, n] of distSorted) console.log(`    ${name.padEnd(10)} ${n} (${(n*100/keyHistory.length).toFixed(1)}%)`);
