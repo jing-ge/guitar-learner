@@ -81,8 +81,24 @@ html = html.replace(
 // 把收集到的 JS 在 </body> 前 inline，此时 DOM 已完整，#root 一定存在
 // 注意：JS 字面量里可能含 "</body>" 字符串（例如 React/Router 内部），
 // 必须用 lastIndexOf 替换最后一个（真正的 HTML 闭合标签），不能用 .replace 替换第一个。
+//
+// Round 50.2 修复 APK 黑屏:
+//   inlineDynamicImports 模式下 Vite 编译 import() 生成 import.meta.url 引用,
+//   classic <script> 不允许 import.meta, 整个 bundle 语法错误 → React app 不启动 → 黑屏
+//
+//   实际上 PWA 模式 (默认 code-split) 主 bundle 也含 import.meta.url
+//   (Vite 编译 import('./essentia-wasm.es.js') 时也会用 import.meta.url 来解析路径)
+//   只是浏览器宽容 + chunk 是 module 加载, 没爆出来。
+//
+//   解法: 一律用 <script type="module">
+//     · 现代 Android WebView (Chrome 80+) inline module script 合法
+//     · Vite 5 prod 目标默认 Chrome 87+, EAS Android minSdk 23 ⇒ WebView ≥ 80
+//     · 注释 7fe20ab "noModule 替代 module" 的历史决定基于 file:// 加载外部 .js,
+//       inline 模式下 module/classic 行为一致 (代码已经在 HTML 里, 不走 file:// 网络请求)
+const scriptOpen = '<script type="module">';
+
 if (collectedJs.length > 0) {
-  const scripts = collectedJs.map(({ code }) => `<script>${escapeForInlineScript(code)}</script>`).join('\n');
+  const scripts = collectedJs.map(({ code }) => `${scriptOpen}${escapeForInlineScript(code)}</script>`).join('\n');
   const closeIdx = html.lastIndexOf('</body>');
   if (closeIdx >= 0) {
     html = html.slice(0, closeIdx) + scripts + '\n  ' + html.slice(closeIdx);
@@ -108,6 +124,18 @@ if (scriptOpenCount !== scriptCloseCount) {
   process.exit(1);
 }
 console.log(`[inline-dist] script tag pairing OK (${scriptOpenCount} pairs)`);
+
+// Round 50.2 回归保护: 如果 inline JS 含 import.meta, 必须是 module script
+// (classic <script> 含 import.meta 会语法错误 → 整个 bundle 不执行 → 黑屏)
+const hasImportMeta = /\bimport\.meta\b/.test(html);
+const hasModuleScript = /<script\s+type=["']module["']/.test(html);
+if (hasImportMeta && !hasModuleScript) {
+  console.error('[inline-dist] ❌ inline JS 含 import.meta 但 <script> 不是 module 类型');
+  console.error('       classic script 不允许 import.meta → 整个 bundle 语法错误 → APK 黑屏');
+  console.error('       修复: 设置 VITE_INLINE_DYNAMIC=1 让 inline-dist 用 <script type="module">');
+  process.exit(1);
+}
+console.log(`[inline-dist] import.meta check: ${hasImportMeta ? 'present (module script ✓)' : 'absent ✓'}`);
 
 // 删除 dist/assets 下被 inline 的 js/css（保留 icon 等其它资产）
 const assetsDir = join(distDir, 'assets');
