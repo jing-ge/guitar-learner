@@ -2279,3 +2279,50 @@ Essentia 输出 (`C / Am / F#m / Bm / D`) 与 CHORDS.id 命名 100% 对齐，无
 5. **Backlog: 人声分离 (Spleeter)**: 评估包体积/推理时间
 
 
+#### Round 49 _2026-05-18_: 和弦听力训练（多音耳朵训练 vs 单音 PitchTrainer）
+
+**用户需求**: "加入一个和弦训练的练习，主要练习对和弦的听力，和单音的练习形成对比，一个单音，一个多音。看到结果后需要显示具体的音名和和弦名用于反馈"
+
+**产品 PRD (oracle ses-2 复用)**
+- Q1 选 A: 4 选 1 辨认（不分大小调子模式 — 太窄；不双 tab — 稀释强度）
+- Q2: 不用麦克风 — 主观选择题判定明确，避免与 PitchTrainer cents 检测重复
+- Q3 选 A: 5 题/组，难度选在题前（与 PitchTrainer 对齐）
+- Q4 调整: 新手 C/G/D/Am（4 选 1）；进阶 + Em/Dm（**去掉 F/E** — F 横按、E 与 Em 中频区难辨）；高阶 + G7/Cmaj7/Dsus2（**去掉 F#m** — 横按音色辨识度低）
+- Q5 选 B: 最多重听 2 次（扫弦/分解共享配额）
+- Q7 选 A: 默认扫弦 + "听分解"按钮（共享配额，避免绕过限制）
+
+**实施 (~445 行新文件 + 3 处 PracticePage 改动)**
+
+| 任务 | 实现 |
+|------|------|
+| **A. ChordEarTrainerPage** | 三 step 流程: intro 难度三选 → task 5 题 → done 错题回顾。复用 synth.strum / playFret / chordPlayablePositions, 不新增 synth API |
+| **B. 题目生成** | `buildQuiz(difficulty)` 从对应池抽答案 + 干扰项, `pickOptions` 保证答案在内 + 干扰项不重复 |
+| **C. 播放** | 扫弦 `synth.strum(positions, {direction:'down', spread:0.028})`; 分解 `playFret` 按 stringNum 大→小排序, 280ms 一个音 |
+| **D. 反馈展示（用户重点要求）** | 答错时显示 (1) 和弦名大字（C/Am/Dm 等）+ 中文全称  (2) **构成音名**（"C - E - G"）从 `ChordDef.shapes[0].frets` 计算去重  (3) 功能解释 ("根音 - 大三度 - 五度（大三和弦）") 按 quality 分支生成  (4) ChordDef.tips（指法提示） |
+| **E. 错题回顾** | done 页列出所有答错题, 显示 "你选 X，正确答案 Y" + 构成音 + 一键再听 |
+| **F. 挂载** | PracticePage TABS 加 `chord-ear` key, 插在 `pitch` 之后, 复用 module-menu-card 样式 |
+
+**关键设计取舍**
+- **不用麦克风**: 单音的 cents 检测有客观频率, 和弦是主观选择题, 体验范式应不同
+- **音名展示来自 frets 计算**: 不在 chords.ts 加新字段 (避免污染数据层), `fretToMidi(s,f) → pc → SHARP_NAMES[pc]`, 自动去重保留弹奏顺序
+- **重听配额共享**: 扫弦/分解共享 2 次配额, 避免用户用 "听分解" 绕开 "听扫弦" 限制 (Karpathy: 不留侧门)
+- **答对自动 1.2s 下一题, 答错手动点 "下一题→"**: 答对节奏快, 答错给充分时间看反馈
+
+**验证**
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅ 主 bundle 397 → 407 KB (+10KB, PRD 预算 +8KB, 微超 +2KB 可接受)
+- `npm run eval:check` ✅ A/B/C/D/E baseline 全保
+- **随机分布采样 200 局**: 三难度各和弦出现频率均匀（偏差 ±12% 内, 1000 样本误差范围合理）
+
+**Karpathy 自检**
+- ✅ Surgical: 1 个新文件 + 3 处 TABS 改动 + 0 个新 utils, 不抽新抽象
+- ✅ YAGNI: 砍掉大小调子模式 / 闯关模式 / 自定义池 / 横按和弦 / 波形可视化 / mic 校准
+- ✅ Goal-driven: 验收 7 条全可手动跑通; 分布均匀性用 200 局 × 5 题量化采样, 不靠"感觉差不多"
+- ✅ 反馈展示用户明确点名要 "音名 + 和弦名", 给到 4 层信息 (大字和弦名/中文全称/构成音/功能解释)
+
+**Round 50 候选方向 (待用户反馈)**
+1. 听力训练加入「**进度排行**」: 累计正确率 / 历史最佳 / 难度通关徽章
+2. 听力训练里**和弦切换练习**: 听 2 个和弦连续播放, 用户判断走向 (I→V / I→IV / vi→IV 等)
+3. ChordDetailModal / ChordEarTrainer 可点击展开 ChordDiagram 查看按法
+
+

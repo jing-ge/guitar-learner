@@ -7,8 +7,9 @@ import Fretboard from '../components/Fretboard';
 import { vibrate, vibratePattern } from '../utils/haptic';
 import { getTodayStats, getRecentDays, recordSession } from '../utils/progress';
 import PitchTrainerPage from './PitchTrainerPage';
+import ChordEarTrainerPage from './ChordEarTrainerPage';
 
-type Tab = 'quiz' | 'fifths' | 'caged' | 'metronome' | 'rhythm' | 'songs' | 'pitch' | 'stats';
+type Tab = 'quiz' | 'fifths' | 'caged' | 'metronome' | 'rhythm' | 'songs' | 'pitch' | 'chord-ear' | 'stats';
 
 type MenuItem = {
   key: Tab;
@@ -20,6 +21,7 @@ type MenuItem = {
 const TRAINING_MENU: MenuItem[] = [
   { key: 'quiz', title: '听音辨认', desc: '听一个音并快速判断音名，适合每天热身。', tag: '推荐新手' },
   { key: 'pitch', title: '音准训练', desc: '弹/唱一个目标音，麦克风检测 cents 偏差给反馈。', tag: '推荐新手' },
+  { key: 'chord-ear', title: '和弦听力', desc: '听一个和弦音色，从选项里辨认。多音版本的听力训练。', tag: '推荐新手' },
   { key: 'fifths', title: '五度圈速答', desc: '强化调性顺序、关系大小调和调号记忆。', tag: '计分' },
   { key: 'caged', title: 'CAGED', desc: '观察和弦在整块指板上的位置连接。', tag: '推荐新手' },
   { key: 'metronome', title: '节拍器', desc: '稳定速度、拍点和基础律动。', tag: '工具' },
@@ -36,6 +38,7 @@ function renderTrainingContent(tab: Tab) {
   if (tab === 'fifths') return <FifthsQuiz />;
   if (tab === 'quiz') return <ListeningQuiz />;
   if (tab === 'pitch') return <PitchTrainerPage />;
+  if (tab === 'chord-ear') return <ChordEarTrainerPage />;
   return <StatsView />;
 }
 
