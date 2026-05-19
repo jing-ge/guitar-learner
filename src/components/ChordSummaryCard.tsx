@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { CHORDS } from '../theory/chords';
 import {
   CLASSIC_PROGRESSIONS,
-  degreesEqual,
+  degreesDistance,
   type ClassicProgression,
 } from '../data/classicProgressions';
 import ChordDiagram from './ChordDiagram';
@@ -75,8 +75,12 @@ export interface ClassicMatch {
   progression: ClassicProgression;
   /** 实际匹配到的和弦名序列 (按时序, 长度 = progression.length) */
   chords: string[];
-  /** 出现次数 (同一 progression 在 history 里匹配到几次) */
+  /** 出现次数 (同一 progression 在 history 里匹配到几次, 含模糊匹配) */
   count: number;
+  /** Round 61: 单位距离 (0=严格, ≤0.3=strong, ≤1.0=weak) */
+  unitDist: number;
+  /** Round 61: 强度档位, strong=严格或≤0.3, weak=0.3-1.0 */
+  strength: 'strong' | 'weak';
 }
 
 /**
@@ -109,12 +113,18 @@ function matchClassicProgressions(
     if (startDegrees.has(deg)) iStartIndices.push(i);
   }
 
-  // Step 2: 对每条**适用当前 scale 的**词典精确匹配
+  // Step 2: Round 61 模糊匹配 — 距离 ≤ 1.0 都收, 分 strong / weak 两档
+  //   unitDist ≤ 0.3 → strong (严格相等或邻近半音替换)
+  //   0.3 < unitDist ≤ 1.0 → weak (近似匹配, 每位平均错 1 个半音内)
+  //   unitDist > 1.0 → 丢弃
+  const STRONG_THRESHOLD = 0.3;
+  const WEAK_THRESHOLD = 1.0;
   interface RawMatch {
     progression: ClassicProgression;
     chords: string[];
     startIdx: number;
     length: number;
+    unitDist: number;
   }
   const rawMatches: RawMatch[] = [];
 
@@ -124,56 +134,78 @@ function matchClassicProgressions(
       if (i + prog.length > folded.length) continue;
       const window = folded.slice(i, i + prog.length);
       const degrees = window.map(c => ((c.rootPc - keyRoot) % 12 + 12) % 12);
-      if (degreesEqual(degrees, prog.degrees)) {
-        rawMatches.push({
-          progression: prog,
-          chords: window.map(w => w.name),
-          startIdx: i,
-          length: prog.length,
-        });
-      }
+      const total = degreesDistance(degrees, prog.degrees);
+      const unitDist = total / prog.length;
+      if (unitDist > WEAK_THRESHOLD) continue;
+      rawMatches.push({
+        progression: prog,
+        chords: window.map(w => w.name),
+        startIdx: i,
+        length: prog.length,
+        unitDist,
+      });
     }
   }
 
-  // Step 3: 长走向吸收 4-chord 子串
+  // Step 3: 长走向吸收 4-chord 子串 (R61 双判据)
+  //   时序包含 + (长走向严格 unitDist ≤ 0.05, 无条件吸收) OR (距离差 ≤ 0.3)
   const absorbed = new Set<number>();
   for (let i = 0; i < rawMatches.length; i++) {
-    if (rawMatches[i].length >= 4 && rawMatches[i].length < 7) {
-      for (let j = 0; j < rawMatches.length; j++) {
-        if (i === j) continue;
-        if (rawMatches[j].length < 7) continue;
-        const a = rawMatches[i];
-        const b = rawMatches[j];
-        if (a.startIdx >= b.startIdx && a.startIdx + a.length <= b.startIdx + b.length) {
-          absorbed.add(i);
-          break;
-        }
+    const a = rawMatches[i];
+    if (a.length >= 7) continue;  // 仅短走向可能被吸收
+    for (let j = 0; j < rawMatches.length; j++) {
+      if (i === j) continue;
+      const b = rawMatches[j];
+      if (b.length < 7) continue;
+      const contained =
+        a.startIdx >= b.startIdx && a.startIdx + a.length <= b.startIdx + b.length;
+      if (!contained) continue;
+      if (b.unitDist <= 0.05 || b.unitDist <= a.unitDist + 0.3) {
+        absorbed.add(i);
+        break;
       }
     }
   }
 
-  // Step 4: 聚合
-  const aggregateMap = new Map<string, { progression: ClassicProgression; chords: string[]; count: number }>();
+  // Step 4: 同 progression.id + 同 startIdx 桶 (±3 帧) 去重, 保留 unitDist 最小
+  const bestByBucket = new Map<string, RawMatch>();
   for (let i = 0; i < rawMatches.length; i++) {
     if (absorbed.has(i)) continue;
     const m = rawMatches[i];
+    const bucketKey = `${m.progression.id}|${Math.floor(m.startIdx / 3)}`;
+    const cur = bestByBucket.get(bucketKey);
+    if (!cur || m.unitDist < cur.unitDist) bestByBucket.set(bucketKey, m);
+  }
+
+  // Step 5: 聚合 (count = 同 progression.id 出现次数, 保留最小 unitDist 实例的 chords)
+  const aggregateMap = new Map<string, ClassicMatch>();
+  for (const m of bestByBucket.values()) {
+    const strength: 'strong' | 'weak' = m.unitDist <= STRONG_THRESHOLD ? 'strong' : 'weak';
     const existing = aggregateMap.get(m.progression.id);
     if (existing) {
       existing.count++;
+      if (m.unitDist < existing.unitDist) {
+        existing.unitDist = m.unitDist;
+        existing.chords = m.chords;
+        existing.strength = strength;
+      }
     } else {
       aggregateMap.set(m.progression.id, {
         progression: m.progression,
         chords: m.chords,
         count: 1,
+        unitDist: m.unitDist,
+        strength,
       });
     }
   }
 
   return [...aggregateMap.values()].sort((a, b) => {
-    if (a.progression.length !== b.progression.length) {
-      return b.progression.length - a.progression.length;
-    }
-    return b.count - a.count;
+    // strong 优先, 然后长度降序, 然后 count 降序, 最后 unitDist 升序
+    if (a.strength !== b.strength) return a.strength === 'strong' ? -1 : 1;
+    if (a.progression.length !== b.progression.length) return b.progression.length - a.progression.length;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.unitDist - b.unitDist;
   });
 }
 
@@ -238,7 +270,12 @@ export function summarizeChords(
     for (const cand of candidates) {
       const matches = matchClassicProgressions(folded, cand.rootPc, cand.scale);
       // 评分: count 总和 + 长走向加权 (8-chord 1 次 ≈ 4-chord 2 次)
-      const score = matches.reduce((s, m) => s + m.count * (m.progression.length / 4), 0);
+      // Round 61: 翻转评分仅计 strong 匹配, 防弱匹配把关系调拱过来
+      // (R59.1 的晴天/高跟鞋回归保护 — 弱匹配只展示不投票)
+      const score = matches.reduce(
+        (s, m) => s + (m.strength === 'strong' ? m.count * (m.progression.length / 4) : 0),
+        0,
+      );
       if (score > bestScore) {
         bestScore = score;
         bestMatches = matches;
@@ -402,22 +439,33 @@ function ClassicProgressionCard({ match, onChordClick }: {
   match: ClassicMatch;
   onChordClick: (chordName: string) => void;
 }) {
-  const { progression, chords, count } = match;
+  const { progression, chords, count, strength, unitDist } = match;
   const isLong = chords.length >= 5;
   const mid = Math.ceil(chords.length / 2);
   const firstHalf = isLong ? chords.slice(0, mid) : chords;
   const secondHalf = isLong ? chords.slice(mid) : [];
+  // Round 61: 匹配度 = 1 - unitDist (0%-100%), 弱匹配整体降饱和
+  const matchPct = Math.max(0, Math.round((1 - unitDist) * 100));
+  const isWeak = strength === 'weak';
 
   return (
     <div style={{
       padding: '10px 12px', marginBottom: 8, borderRadius: 8,
-      background: 'rgba(245,158,11,0.10)',
-      border: '1px solid rgba(245,158,11,0.30)',
+      background: isWeak ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.10)',
+      border: isWeak ? '1px solid rgba(245,158,11,0.18)' : '1px solid rgba(245,158,11,0.30)',
     }}>
-      {/* 第一行: nickname (左) + 度数串 ID (右) */}
+      {/* 第一行: nickname (左, 含弱匹配徽章) + 度数串 ID (右) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
           {progression.nickname}
+          {isWeak && (
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              background: 'rgba(245,158,11,0.18)', color: 'var(--text-muted)',
+              border: '1px solid rgba(245,158,11,0.30)', marginLeft: 6,
+              fontWeight: 500,
+            }}>近似</span>
+          )}
         </span>
         <span style={{
           fontSize: 13, fontWeight: 600, color: 'var(--brand)',
@@ -442,7 +490,7 @@ function ClassicProgressionCard({ match, onChordClick }: {
         )}
       </div>
 
-      {/* 第四行: 描述 + 次数 */}
+      {/* 第四行: 描述 + 匹配度 + 次数 */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
         marginTop: 6, gap: 8,
@@ -451,7 +499,7 @@ function ClassicProgressionCard({ match, onChordClick }: {
           💡 {progression.description}
         </span>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
-          ×{count}
+          匹配 {matchPct}% · ×{count}
         </span>
       </div>
     </div>

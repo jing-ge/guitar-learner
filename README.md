@@ -3193,3 +3193,78 @@ for (let i = 0; i < folded.length; i++) {
 3. 词典再扩 — 流行 80% → 90%, 但 false positive 风险升
 
 
+#### Round 61 _2026-05-19_: 模糊匹配 + 置信度 (强/弱两档)
+
+**用户决定**: 用 R59 v2 PRD 早就设计的模糊匹配修"识别有 1-2 个错和弦时仍能命中经典走向"
+
+**核心设计**:
+- **circular semitone distance**: 度数空间 mod 12, V(7)↔vi(9) 距离 2 而非 7
+- **单位距离 unitDist = totalDist / length**: 4-chord 错 1 个半音 = 0.25
+- **两档置信度** (oracle 决策从 v2 单阈值 1.5 收紧到 1.0):
+  - `unitDist ≤ 0.3` → **strong** (严格相等或邻近半音替换)
+  - `0.3 < unitDist ≤ 1.0` → **weak** (近似匹配)
+  - `> 1.0` → 丢弃
+- **置信度公式**: `confidence = max(0, 1 - unitDist)` (0-100%)
+- **同 startIdx 桶 (±3 帧) 去重**: 同 progression.id 保留 unitDist 最小实例
+- **长走向吸收双判据**: 时序包含 + (长走向严格 ≤ 0.05 无条件 OR 距离差 ≤ 0.3)
+- **翻转评分只用 strong**: 防弱匹配把关系调拱过来 (保护 R59.1 + R60 修复成果)
+- **不放开起手白名单到全 12 度**: 保留 R60 的 {I,vi,IV}/{i,III,VI} 作为第一道音乐学先验
+- **不引入软惩罚**: R60 起手白名单足够过滤, distance 自己说话
+
+**改动 (~65 行)**:
+
+A. `classicProgressions.ts` (+18 行)
+   - 新增 `degreesDistance(a, b)`: circular semitone distance
+
+B. `ChordSummaryCard.tsx` ClassicMatch 接口扩字段 (+3 行)
+   - `unitDist: number` (0=严格)
+   - `strength: 'strong' | 'weak'`
+
+C. `matchClassicProgressions` 重写 Step 2-5 (~40 行)
+   - Step 2 模糊匹配: degreesDistance / WEAK_THRESHOLD 过滤
+   - Step 3 长走向吸收双判据
+   - Step 4 同 startIdx ±3 桶去重 (保留最小 unitDist)
+   - Step 5 聚合 + 排序 (strong 优先 / 长度 / count / unitDist)
+
+D. 翻转评分只计 strong (1 行)
+
+E. `ClassicProgressionCard` UI (+20 行)
+   - 弱匹配徽章 "近似"
+   - 匹配度百分比 (1 - unitDist)
+   - 弱匹配卡片整体降饱和 (背景 0.05 / 边框 0.18)
+
+**三首 wav 实测 (R60 → R61)**:
+
+| 曲目 | R60 匹配 | R61 匹配 (新增弱匹配) |
+|------|---------|---------|
+| 卡农 D | 卡农进行 ×13 + 圣咏式 ×23 + 意外终止 ×1 | + 卡农变体 ×16 (新) + 1564 ×7 + 1456 ×26 + 6451 ×24 + 6415 ×6 + 1465 ×3 |
+| 晴天 G | 6415 ×6 + 1564 ×4 + 圣咏式 ×1 | + 卡农进行 + 卡农变体 + 爵士开放 + **1465 ×9** + 6451 ×5 + 1645 ×2 + 4561 ×1 |
+| 高跟鞋 D | 1456 ×9 + 4561 ×7 + 6415 + 6451 | + 1564 ×3 + 卡农进行 ×1 + **1465 ×12** + **1451 ×11** + 6415 ×8 |
+
+**关键保护**:
+- ✅ 推荐主调 3/3 正确 (Essentia 原判全部保留, 无误翻转)
+- ✅ R60 强匹配全部保留为 strong (unitDist=0)
+- ✅ 大量弱匹配新增 — 反映识别噪声 + 经典走向变体的合理推测
+
+**Karpathy 自检**:
+- ✅ Surgical: 65 行 patch, 词典/翻转候选/起手白名单不动
+- ✅ Goal-driven: 3 首 wav 主匹配回归零退化, 模糊匹配只增不减
+- ✅ Think Before Coding: degreesDistance 用圆周距离 (度数空间 mod 12); 翻转评分只用 strong 是保护 R59.1+R60 修复成果, 不是装饰
+- ❌ 不加用户可调阈值 / 不引入"和弦质量错配距离" / 不放开起手白名单
+
+**测试**:
+- tsc + PWA build (HTML 488.6 → ~490 KB, +2 KB 微增)
+- 3 首 wav 实测 (progression-eval.mjs)
+  - 推荐主调 3/3 正确
+  - R60 主匹配全保留
+  - 新增弱匹配数 7-12 个/首 (反映模糊匹配生效)
+
+**完成度更新**: 89.5% → **90%** (路线 1 已超过 88% 目标, 真实反馈驱动)
+
+**Round 62 候选**:
+1. 词典再扩 — 流行 80% → 90%, 含 blues 12-bar / metal / R&B 进行
+2. 真机用户反馈 (Oracle 第五次推荐)
+3. 弱匹配阈值调参 — 实测发现 unitDist=0.5 容易爆 (晴天/高跟鞋 7-12 个弱匹配), 收紧到 0.7?
+4. R52 录音文件上传 / R51 主旋律识别真机反馈
+
+

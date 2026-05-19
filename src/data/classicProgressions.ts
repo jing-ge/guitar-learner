@@ -165,3 +165,21 @@ export function degreesEqual(a: number[], b: number[]): boolean {
   }
   return true;
 }
+
+/**
+ * Round 61: circular semitone distance.
+ * 度数空间是 mod 12, V(7) 离 vi(9) 是 2 而不是 7.
+ * 返回 totalDist, 调用方除以 length 得 unitDist (= 每位平均偏差半音数).
+ *
+ * 例: [0,7,9,5] vs [0,7,9,4] → total=1 (最后一位 5 vs 4 差 1 半音)
+ *     unitDist = 0.25 → strength=strong (≤0.3)
+ */
+export function degreesDistance(a: number[], b: number[]): number {
+  if (a.length !== b.length) return Infinity;
+  let total = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = ((a[i] - b[i]) % 12 + 12) % 12;
+    total += Math.min(d, 12 - d);
+  }
+  return total;
+}
