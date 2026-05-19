@@ -465,8 +465,10 @@ export default function ListenPage() {
             currentSec={playback.currentSec}
             onSeek={playback.seek}
           />
-          {/* Round 53: 主旋律 → 吉他指板按法推荐 */}
-          {melody.notes.length > 0 && <FretboardMap notes={melody.notes} />}
+          {/* Round 53: 主旋律 → 吉他指板按法推荐. Round 54: 接 currentSec 联动当前位置高亮 */}
+          {melody.notes.length > 0 && (
+            <FretboardMap notes={melody.notes} currentSec={playback.currentSec} />
+          )}
         </>
       )}
 

@@ -33,15 +33,31 @@ const DOUBLE_INLAY_FRETS = [12];
 
 interface Props {
   notes: MelodyNote[];
+  /** Round 54: 当前播放秒数 (用于高亮当前音符的按法位置, undefined = 不高亮) */
+  currentSec?: number;
 }
 
-export default function FretboardMap({ notes }: Props) {
+export default function FretboardMap({ notes, currentSec }: Props) {
   const { positions, outOfRange } = useMemo(
     () => getUniquePositions(notes),
     [notes],
   );
 
   if (notes.length === 0) return null;
+
+  // Round 54: 找当前播放的 note 索引 (notes 数组里的 index, 0-based)
+  // R53 用 noteIndexes 是 1-based 序号 (用户可见), 这里要对齐到 1-based
+  // 静音段/末尾: activeNoteIndex = -1 → 任何位置都不会高亮
+  let activeNoteIndex = -1;
+  if (currentSec !== undefined && currentSec >= 0) {
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      if (currentSec >= n.startSec && currentSec < n.startSec + n.durSec) {
+        activeNoteIndex = i + 1; // 转 1-based 与 noteIndexes 对齐
+        break;
+      }
+    }
+  }
 
   // 自动决定 fret 范围: 0 ~ max(已用 fret) + 1, 最少到 5 品, 最多 12 品
   const maxFret = positions.reduce((m, p) => Math.max(m, p.position.fret), 0);
@@ -172,12 +188,17 @@ export default function FretboardMap({ notes }: Props) {
             const cy = stringY(sIdx);
             // 多个序号: 显示前 3 个, 多了用 "..." 省略
             const idxLabel = p.noteIndexes.slice(0, 3).join(',') + (p.noteIndexes.length > 3 ? '+' : '');
+            // Round 54: 当前播放的 note 是否落在此位置 (noteIndexes 是 1-based 序号)
+            const isActive = activeNoteIndex > 0 && p.noteIndexes.includes(activeNoteIndex);
             return (
               <g key={i}>
                 <circle
-                  cx={cx} cy={cy} r={11}
-                  fill="var(--brand)"
-                  stroke="#fff" strokeWidth={1.5}
+                  cx={cx} cy={cy}
+                  r={isActive ? 13 : 11}
+                  fill={isActive ? 'var(--accent-cyan, #06b6d4)' : 'var(--brand)'}
+                  stroke="#fff"
+                  strokeWidth={isActive ? 3 : 1.5}
+                  style={{ transition: 'all 0.1s' }}
                 />
                 <text
                   x={cx} y={cy + 3.5}

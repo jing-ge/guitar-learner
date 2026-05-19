@@ -2733,3 +2733,72 @@ PitchMelodia 输出 (Hz/frame) → postprocessMelody:
 5. R51 后处理改进 (medianFilter 只平滑有音帧, 颤音段合并)
 
 
+#### Round 54 _2026-05-19_: 游标↔指板联动 (跟弹闭环最后一环)
+
+**用户决定**: 选路线 1 (纯技术尾巴 5 轮, R54-R58, 81% → 88%, 边际递减)
+
+**Oracle ROI 预估**: A1 +2pp → 83%, 高 ROI 任务
+
+**为什么这一步是 R51/52/53 复利时刻**:
+- R47-50 累积了麦克风录音 + Essentia 离线分析的基础
+- R51 加了主旋律识别 (notes 含 startSec)
+- R52 加了 useAudioPlayback hook + 时间游标 (currentSec 已通过 RAF 驱动)
+- R53 加了 FretboardMap (按法位置已含 noteIndexes 1-based 序号)
+- **R54 = 把数据流接一根线**: FretboardMap 加 currentSec prop, 计算 activeNoteIndex, 高亮对应位置
+
+**实施 (~25 行新代码, 单轮 < 1 小时)**
+
+| 文件 | 改动 | 职责 |
+|------|------|------|
+| `FretboardMap.tsx` | +22 | currentSec prop + activeNoteIndex 计算 + marker isActive 视觉切换 |
+| `ListenPage.tsx` | +3 | 传 currentSec={playback.currentSec} 给 FretboardMap |
+
+**核心算法**:
+```ts
+// 顶部计算当前播放在第几个 note (1-based, 与 noteIndexes 对齐)
+let activeNoteIndex = -1;
+for (let i = 0; i < notes.length; i++) {
+  const n = notes[i];
+  if (currentSec >= n.startSec && currentSec < n.startSec + n.durSec) {
+    activeNoteIndex = i + 1;
+    break;
+  }
+}
+// 每个 marker
+const isActive = activeNoteIndex > 0 && p.noteIndexes.includes(activeNoteIndex);
+```
+
+**视觉切换** (transition: all 0.1s):
+- r: 11 → 13 (放大 18%)
+- fill: var(--brand) → var(--accent-cyan)
+- stroke: 1.5 → 3 (描边加粗)
+
+**用户跟弹闭环完成**:
+```
+1. 哼唱旋律 → 录音
+2. Essentia 识别音名 (R51)
+3. 算法推荐每个音的指板位置 (R53)
+4. 点播放 → 时间游标在 MelodyTimeline 滑动 (R52)
+5. ★ FretboardMap 上的当前位置高亮 (R54)
+6. 用户手随游标节奏在吉他上跟弹
+```
+
+**Oracle 实施后审计**: 6/6 验收标准全过, 0 阻塞, 可发版
+
+**Karpathy 自检**:
+- ✅ Surgical: 2 个文件 +25 行, 不动 R47-53 其它代码
+- ✅ Simplicity: 1 个 prop + 1 个 findIndex + 3 个属性切换 = 全部
+- ✅ Goal-driven: 复用 R52 RAF 驱动, 复用 R53 noteIndexes 结构, 接线不发明
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build: HTML 470 KB (+200B, 纯接线)
+- 两道防护通过
+
+**完成度更新**: 81% → **83%** (路线 1 第 1/5 轮)
+
+**Round 55 候选 (路线 1 下一项)**:
+- A4 PitchMelodia 后处理改进 (medianFilter 只平滑有音帧) + A5 节奏评分回授剔除
+- 合并轻量轮, +1.5pp → 84.5%
+
+
