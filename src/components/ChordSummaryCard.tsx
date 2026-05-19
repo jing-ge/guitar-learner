@@ -10,6 +10,11 @@
 
 import { useState } from 'react';
 import { CHORDS } from '../theory/chords';
+import {
+  CLASSIC_PROGRESSIONS,
+  degreesEqual,
+  type ClassicProgression,
+} from '../data/classicProgressions';
 import ChordDiagram from './ChordDiagram';
 
 const SHARP_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -50,8 +55,117 @@ export function toRoman(rootPc: number, quality: string, keyRoot: number, keyMod
 
 export interface ChordSummary {
   uniqueChords: { name: string; count: number; roman: string }[];
+  /** Round 59: 经典走向匹配 (1564 / 4536251 / 卡农 等) */
+  classicMatches: ClassicMatch[];
+  /** 旧字段: 非经典的重复走向 (4-chord 滑窗 ≥ 2 次), 仅当 classicMatches 为空时展示 */
   progressions: { chords: string[]; romans: string[]; count: number }[];
   totalFolded: number;
+  /**
+   * Round 59.1: 跨关系大小调匹配后的"推荐主调".
+   * Essentia 给的 keyScale 可能错判 (大调 vs 关系小调 顺阶集合等价),
+   * summarizeChords 内部对原判 + 关系调各跑一遍经典匹配,
+   * 命中数多的胜出 → 推荐这个作为主调展示.
+   * null = 无 keyRoot 输入或两边都没匹配.
+   */
+  recommendedKey: { rootPc: number; scale: 'major' | 'minor' } | null;
+}
+
+/** Round 59: 经典走向匹配结果 */
+export interface ClassicMatch {
+  progression: ClassicProgression;
+  /** 实际匹配到的和弦名序列 (按时序, 长度 = progression.length) */
+  chords: string[];
+  /** 出现次数 (同一 progression 在 history 里匹配到几次) */
+  count: number;
+}
+
+/**
+ * Round 59.1: 在给定调性下匹配经典走向词典.
+ * 只匹配 scale 字段与当前 scale 相符的词典 (或 'any').
+ *
+ * 算法 (与 R59 一致, 只是抽成函数):
+ *   1. 找所有主和弦 (I/i) 起手位置
+ *   2. 对每条词典 × 每个起手位置, 精确度数串相等
+ *   3. 长走向吸收 4-chord 子串 (避免卡农同时显示内部 1564)
+ *   4. 聚合 (同 progression.id 计数)
+ */
+function matchClassicProgressions(
+  folded: { name: string; rootPc: number; quality: string }[],
+  keyRoot: number,
+  scale: 'major' | 'minor',
+): ClassicMatch[] {
+  // Step 1: 找所有主和弦起手位置
+  const iStartIndices: number[] = [];
+  for (let i = 0; i < folded.length; i++) {
+    if (folded[i].rootPc === keyRoot) iStartIndices.push(i);
+  }
+
+  // Step 2: 对每条**适用当前 scale 的**词典精确匹配
+  interface RawMatch {
+    progression: ClassicProgression;
+    chords: string[];
+    startIdx: number;
+    length: number;
+  }
+  const rawMatches: RawMatch[] = [];
+
+  for (const prog of CLASSIC_PROGRESSIONS) {
+    if (prog.scale !== 'any' && prog.scale !== scale) continue;
+    for (const i of iStartIndices) {
+      if (i + prog.length > folded.length) continue;
+      const window = folded.slice(i, i + prog.length);
+      const degrees = window.map(c => ((c.rootPc - keyRoot) % 12 + 12) % 12);
+      if (degreesEqual(degrees, prog.degrees)) {
+        rawMatches.push({
+          progression: prog,
+          chords: window.map(w => w.name),
+          startIdx: i,
+          length: prog.length,
+        });
+      }
+    }
+  }
+
+  // Step 3: 长走向吸收 4-chord 子串
+  const absorbed = new Set<number>();
+  for (let i = 0; i < rawMatches.length; i++) {
+    if (rawMatches[i].length >= 4 && rawMatches[i].length < 7) {
+      for (let j = 0; j < rawMatches.length; j++) {
+        if (i === j) continue;
+        if (rawMatches[j].length < 7) continue;
+        const a = rawMatches[i];
+        const b = rawMatches[j];
+        if (a.startIdx >= b.startIdx && a.startIdx + a.length <= b.startIdx + b.length) {
+          absorbed.add(i);
+          break;
+        }
+      }
+    }
+  }
+
+  // Step 4: 聚合
+  const aggregateMap = new Map<string, { progression: ClassicProgression; chords: string[]; count: number }>();
+  for (let i = 0; i < rawMatches.length; i++) {
+    if (absorbed.has(i)) continue;
+    const m = rawMatches[i];
+    const existing = aggregateMap.get(m.progression.id);
+    if (existing) {
+      existing.count++;
+    } else {
+      aggregateMap.set(m.progression.id, {
+        progression: m.progression,
+        chords: m.chords,
+        count: 1,
+      });
+    }
+  }
+
+  return [...aggregateMap.values()].sort((a, b) => {
+    if (a.progression.length !== b.progression.length) {
+      return b.progression.length - a.progression.length;
+    }
+    return b.count - a.count;
+  });
 }
 
 export function summarizeChords(
@@ -59,7 +173,9 @@ export function summarizeChords(
   keyRoot: number | null,
   keyMode: 'major' | 'minor' | null,
 ): ChordSummary {
-  if (history.length === 0) return { uniqueChords: [], progressions: [], totalFolded: 0 };
+  if (history.length === 0) {
+    return { uniqueChords: [], classicMatches: [], progressions: [], totalFolded: 0, recommendedKey: null };
+  }
 
   // Step 1: 折叠相邻同根
   const folded: { name: string; rootPc: number; quality: string }[] = [];
@@ -90,7 +206,43 @@ export function summarizeChords(
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 
-  // Step 3: 4-chord 重复走向
+  // ============ Round 59 + 59.1: 经典走向匹配 (跨关系大小调) ============
+  // 因为 Essentia.KeyExtractor 在大调 vs 关系小调间常常二选一犹豫 (二者顺阶完全相同),
+  // 这里对 [原判 + 关系调] 各跑一遍经典匹配, 命中数多的胜出.
+  // 同时按 keyScale 过滤词典 (大调词典只在 major 下跑, 小调词典只在 minor 下跑).
+  let classicMatches: ClassicMatch[] = [];
+  let recommendedKey: { rootPc: number; scale: 'major' | 'minor' } | null = null;
+
+  if (keyRoot !== null && keyMode !== null && folded.length >= 4) {
+    // 跑两遍: 原判 + 关系调
+    const candidates: Array<{ rootPc: number; scale: 'major' | 'minor' }> = [
+      { rootPc: keyRoot, scale: keyMode },
+      keyMode === 'major'
+        ? { rootPc: (keyRoot + 9) % 12, scale: 'minor' }
+        : { rootPc: (keyRoot + 3) % 12, scale: 'major' },
+    ];
+
+    let bestMatches: ClassicMatch[] = [];
+    let bestKey: typeof candidates[0] | null = null;
+    let bestScore = -1;
+
+    for (const cand of candidates) {
+      const matches = matchClassicProgressions(folded, cand.rootPc, cand.scale);
+      // 评分: count 总和 + 长走向加权 (8-chord 1 次 ≈ 4-chord 2 次)
+      const score = matches.reduce((s, m) => s + m.count * (m.progression.length / 4), 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatches = matches;
+        bestKey = cand;
+      }
+    }
+
+    classicMatches = bestMatches;
+    recommendedKey = bestKey;
+  }
+  // ============ /Round 59 + 59.1 经典匹配 ============
+
+  // Step 4: 旧的 4-chord 重复走向 (降级 fallback, 仅当 classicMatches 为空时展示)
   const progMap = new Map<string, { chords: string[]; rootPcs: number[]; qualities: string[]; count: number }>();
   if (folded.length >= 4) {
     for (let i = 0; i <= folded.length - 4; i++) {
@@ -118,7 +270,7 @@ export function summarizeChords(
       count: p.count,
     }));
 
-  return { uniqueChords, progressions, totalFolded: folded.length };
+  return { uniqueChords, classicMatches, progressions, totalFolded: folded.length, recommendedKey };
 }
 
 export default function ChordSummaryCard({ summary }: { summary: ChordSummary }) {
@@ -160,15 +312,34 @@ export default function ChordSummaryCard({ summary }: { summary: ChordSummary })
           </div>
         </div>
 
-        {summary.progressions.length > 0 && (
+        {/* Round 59: 经典走向 (顶部突出) */}
+        {summary.classicMatches.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>
+              🎯 经典走向
+            </div>
+            {summary.classicMatches.map((m, i) => (
+              <ClassicProgressionCard
+                key={i}
+                match={m}
+                onChordClick={setSelectedChord}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* 旧的"重复走向" 仅在没经典匹配时降级显示 */}
+        {summary.classicMatches.length === 0 && summary.progressions.length > 0 && (
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>主要走向（重复出现）</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+              其他重复走向
+            </div>
             {summary.progressions.map((p, i) => (
               <div key={i} style={{
                 padding: '8px 10px', marginBottom: 6, borderRadius: 8,
                 background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)',
               }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)', letterSpacing: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-strong)', letterSpacing: 1 }}>
                   {p.chords.map((ch, idx) => (
                     <span key={idx}>
                       <button
@@ -205,6 +376,98 @@ export default function ChordSummaryCard({ summary }: { summary: ChordSummary })
         />
       )}
     </>
+  );
+}
+
+/**
+ * Round 59: 经典走向卡片
+ *
+ * 显示一个经典走向匹配:
+ *   - 大字 nickname + 度数串 ID (1564 / 4536251 / 15634145)
+ *   - 罗马数字 (I-V-vi-IV)
+ *   - 实际和弦序列 (长度 ≤ 4 单行, 5-8 折叠两行)
+ *   - 出现次数 ×N
+ *   - 一行 description
+ */
+function ClassicProgressionCard({ match, onChordClick }: {
+  match: ClassicMatch;
+  onChordClick: (chordName: string) => void;
+}) {
+  const { progression, chords, count } = match;
+  const isLong = chords.length >= 5;
+  const mid = Math.ceil(chords.length / 2);
+  const firstHalf = isLong ? chords.slice(0, mid) : chords;
+  const secondHalf = isLong ? chords.slice(mid) : [];
+
+  return (
+    <div style={{
+      padding: '10px 12px', marginBottom: 8, borderRadius: 8,
+      background: 'rgba(245,158,11,0.10)',
+      border: '1px solid rgba(245,158,11,0.30)',
+    }}>
+      {/* 第一行: nickname (左) + 度数串 ID (右) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
+          {progression.nickname}
+        </span>
+        <span style={{
+          fontSize: 13, fontWeight: 600, color: 'var(--brand)',
+          fontFamily: 'ui-monospace, monospace',
+        }}>
+          {progression.id}
+        </span>
+      </div>
+
+      {/* 第二行: 罗马数字 (轻) */}
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'serif', letterSpacing: 1 }}>
+        {progression.roman}
+      </div>
+
+      {/* 第三行: 实际和弦序列 (≤4 单行 / 5-8 两行) */}
+      <div style={{ marginTop: 6 }}>
+        <ChordChain chords={firstHalf} onClick={onChordClick} />
+        {secondHalf.length > 0 && (
+          <div style={{ marginTop: 4 }}>
+            <ChordChain chords={secondHalf} onClick={onChordClick} />
+          </div>
+        )}
+      </div>
+
+      {/* 第四行: 描述 + 次数 */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        marginTop: 6, gap: 8,
+      }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', flex: 1 }}>
+          💡 {progression.description}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+          ×{count}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 和弦链条 (D → A → Bm → G), 每个和弦可点击展开按法 */
+function ChordChain({ chords, onClick }: { chords: string[]; onClick: (ch: string) => void }) {
+  return (
+    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)', letterSpacing: 1 }}>
+      {chords.map((ch, idx) => (
+        <span key={idx}>
+          <button
+            onClick={() => onClick(ch)}
+            style={{
+              background: 'transparent', border: 'none', padding: 0,
+              font: 'inherit', color: 'inherit', cursor: 'pointer',
+              textDecoration: 'underline', textDecorationStyle: 'dotted',
+              textDecorationColor: 'var(--text-muted)',
+            }}
+          >{ch}</button>
+          {idx < chords.length - 1 && <span style={{ color: 'var(--text-muted)' }}> → </span>}
+        </span>
+      ))}
+    </div>
   );
 }
 

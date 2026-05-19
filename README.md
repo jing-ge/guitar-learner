@@ -3040,3 +3040,78 @@ R49 单和弦听力训练的升级版: 听 2 个和弦序列 → 用户判断走
 **继续闭门迭代 = 在错的方向上每加一行都是负 ROI**.
 
 
+#### Round 59 / 59.1 _2026-05-19_: 经典和弦走向词典 + 关系大小调跨调匹配
+
+**真实用户反馈驱动**:
+> "和弦走向的总结需要优化一下, 基本无用. 应识别 1564/1645/15634145/4536251 等常用走向"
+> "要把常用和弦走向都扩展一些, 基本覆盖大多数流行音乐"
+> "目前对于识别到的关系大小调是怎么判断和展示的"
+
+**关键发现 — 三个问题纠结在一起**:
+1. R47 切到 Essentia 后, 丢失了 R43 的关系大小调双标注 (只显示一个判断)
+2. 因为 Essentia 在大调 vs 关系小调的判别本质上是二选一 (顺阶完全相同), 单一判断常常误导
+3. 用户感觉"识别有点乱" — 根因是大脑用大调思维看小调标签, 双标后认知对齐
+
+**实施 R59 (精确匹配) + R59.1 (扩词典 + 跨调匹配) 一起 commit**:
+
+**改动 1**: `src/audio/keyAlternatives.ts` (新增 ~50 行)
+- `getRelativeKey(rootPc, scale)` 返回关系调
+- `keyDisplayName` / `bothKeysDisplay` 工具函数
+
+**改动 2**: `src/data/classicProgressions.ts` (新增 ~140 行) 词典
+- 大调 4-chord 8 条: 1564 / 1645 / 6415 / 1465 / 4561 / 1456 / 1451 / 6451
+- 大调长走向 4 条: 4536251 / 1453625 / 15634125 / 15634145
+- **小调原生 4 条**: i-VI-III-VII / i-iv-VII-III / i-VII-VI-V / i-iv-v-i
+- ProgressionDef 加 `scale: 'major' | 'minor' | 'any'` 字段
+- 度数串严格相等比较 `degreesEqual()`
+
+**改动 3**: `src/components/ChordSummaryCard.tsx` 重构 (+200 行)
+- 抽 `matchClassicProgressions(folded, keyRoot, scale)` helper
+- ChordSummary 接口加 `recommendedKey: { rootPc, scale } | null`
+- **跨关系调匹配**: 对原判 + 关系调各跑一遍, 评分 = `Σ count × (length/4)` (长走向加权), 命中分数高的胜出
+- 长走向吸收 4-chord 子串 (avoid 卡农同时显示内部 1564)
+- ClassicProgressionCard UI 卡片 (nickname / 度数串 / 罗马数字 / 折叠和弦链 / count / description)
+
+**改动 4**: `ListenPage.ResultHeader` 双标注 (+30 行)
+- 主调显示 `recommendedKey`(若 summary 翻转了原判), 否则 Essentia 原判
+- sub 显示关系调名 OR "↔ X (原判)" 标识翻转
+- 副标 "💡 关系大小调顺阶等价, 二者皆有可能"
+
+**用户痛点修复路径**:
+```
+之前: Essentia 判 C 大调 → 用户看 "C 大调" → 走向是 Am-F-C-G → 用户大脑卡住
+现在: Essentia 判 C 大调 → 跨调跑发现 A 小调匹配数多 → recommendedKey 翻转
+     UI 显示 "A 小调  ↔ C 大调(原判)" → 走向匹配 "i-VI-III-VII 小调流行循环"
+     用户认知对齐
+```
+
+**单元测试 4 全过**:
+- T1 A 小调真歌 Am-F-C-G ×2 → 匹配 i-VI-III-VII ×2 ✓
+- T2 Essentia 误判 C 大调实际是小调 → 翻转到 A 小调 + 小调匹配 ✓
+- T3 真 C 大调流行 C-G-Am-F → 匹配 1564, 不翻转 ✓
+- **T4 关键: 翻转检测** — Am-Dm-G-C ×2 (大调下无匹配, 小调下 i-iv-VII-III 匹配) → 翻转到 A 小调 ✓
+
+**Karpathy 砍掉**:
+- ❌ 模糊匹配 (R59 v2 提案, 留 Round 60 用户反馈驱动)
+- ❌ 5/6-chord 词典 (罕见独立成型)
+- ❌ 与已有走向距离 ≤ 0.5 的候选 (false positive 风险)
+- ❌ 大小三和弦差异参与匹配 (本轮 chord quality 简化)
+
+**测试**:
+- tsc + PWA build (HTML 484.3 → 488.6 KB, +4.3 KB)
+- 4 单元测试全过 (跨调翻转关键场景验证)
+- R47-58 不回归
+
+**已知妥协**:
+- 度数串严格相等, 识别若有 1 个和弦错就匹配失败 (R60 v2 模糊匹配解决)
+- 4536251 爵士不从 I 起手 → 当前算法只切 I 起手窗口 → false negative (R60 可扩展)
+- 翻转评分用 "count × length/4" 简单加权, 未做精细化
+
+**完成度更新**: 88% → **89%** (真实用户反馈驱动, 含金量比 R54-58 高)
+
+**Round 60 候选**:
+1. R59 v2 模糊匹配 + 置信度展示 (距离 ≤ 1.5 容差, 100/75/50% 置信度)
+2. 真机自测 5 首流行歌验证 R59.1 效果 (Oracle 第四次推荐)
+3. 4536251 / 6415 不从 I 起手 false negative 修复
+
+

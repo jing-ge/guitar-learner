@@ -447,7 +447,7 @@ export default function ListenPage() {
       )}
       {phase === 'done' && mode === 'chord' && result && (
         <>
-          <ResultHeader result={result} />
+          <ResultHeader result={result} summary={summary} />
           <ChordTimeline
             beatChords={result.beatChords}
             totalDuration={recordedSec}
@@ -565,21 +565,51 @@ function RecordingView({ recordedSec, duration, level, waveform, onStop }: {
 
 /* =================== 子组件：结果头 (BPM + 调性) =================== */
 
-function ResultHeader({ result }: { result: AnalysisResult }) {
+function ResultHeader({ result, summary }: { result: AnalysisResult; summary: import('../components/ChordSummaryCard').ChordSummary | null }) {
   // Essentia 调性输出的 key 已经是 SHARP 名（A~G + #）
   // scale: major | minor
-  const scaleLabel = result.key.scale === 'major' ? '大调' : '小调';
+  // Round 59.1: 关系大小调双标注. summarizeChords 跨两调跑后, recommendedKey 可能与 Essentia 原判不同.
+  const SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const essentiaKeyName = `${result.key.key} ${result.key.scale === 'major' ? '大调' : '小调'}`;
+  // 关系调名 (用于双标注)
+  const essentiaRootPc = parseRootPc(result.key.key);
+  const relRootPc = essentiaRootPc >= 0
+    ? (result.key.scale === 'major' ? (essentiaRootPc + 9) % 12 : (essentiaRootPc + 3) % 12)
+    : -1;
+  const relativeName = relRootPc >= 0
+    ? `${SHARP[relRootPc]} ${result.key.scale === 'major' ? '小调' : '大调'}`
+    : null;
+
+  // 主调展示: 优先用 summary.recommendedKey (跨两调跑的胜者), 没有则用 Essentia 原判
+  const recommendedRootPc = summary?.recommendedKey?.rootPc ?? essentiaRootPc;
+  const recommendedScale = summary?.recommendedKey?.scale ?? result.key.scale;
+  const primaryName = recommendedRootPc >= 0
+    ? `${SHARP[recommendedRootPc]} ${recommendedScale === 'major' ? '大调' : '小调'}`
+    : essentiaKeyName;
+  // 是否被 summarizeChords 翻转了 Essentia 原判
+  const flipped = summary?.recommendedKey &&
+    (summary.recommendedKey.rootPc !== essentiaRootPc || summary.recommendedKey.scale !== result.key.scale);
+
   const confColor = result.key.strength > 0.6 ? 'var(--success, #10b981)' :
                     result.key.strength > 0.4 ? 'var(--brand)' : 'var(--text-muted)';
+  // 调性 sub: 双标注 + (可选) "Essentia 原判" 提示
+  const keySub = flipped
+    ? `↔ ${essentiaKeyName} (原判)`
+    : (relativeName ? `关系调: ${relativeName}` : `置信 ${(result.key.strength * 100).toFixed(0)}%`);
 
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <Stat label="调性" value={`${result.key.key} ${scaleLabel}`} sub={`置信 ${(result.key.strength * 100).toFixed(0)}%`} color={confColor} />
+        <Stat label="调性" value={primaryName} sub={keySub} color={confColor} />
         <Stat label="BPM" value={result.bpm > 0 ? result.bpm.toFixed(0) : '—'} sub="拍/分钟" />
         <Stat label="节拍数" value={`${result.ticks.length}`} sub={`和弦 ${result.beatChords.length}`} />
         <Stat label="耗时" value={`${(result.elapsedMs / 1000).toFixed(2)}s`} sub="分析时间" />
       </div>
+      {relativeName && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 6 }}>
+          💡 关系大小调顺阶等价 ({primaryName} ↔ {recommendedScale === 'major' ? relativeName : (essentiaRootPc === recommendedRootPc ? relativeName : `${SHARP[(recommendedRootPc + 9) % 12]} 小调`)}), 二者皆有可能
+        </div>
+      )}
     </div>
   );
 }
