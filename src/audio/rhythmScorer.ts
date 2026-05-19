@@ -43,11 +43,20 @@ export interface RhythmScore {
   absentCount: number;
   /** 校准 offset (ms, 评分前减掉) */
   calibrationOffsetMs: number;
+  /**
+   * Round 55 A5: 疑似检测到节拍器 click 被麦克风收录回授
+   * 触发条件: 评分阶段 onset 落在 expected beat ±5ms 内的比例 > 60%
+   * 人类节奏感知阈值 ~20ms, ±5ms 是远超人类扫弦精度的异常一致性,
+   * 几乎一定是节拍器自我录入. UI 应提示 '戴耳机或降低外放音量'
+   */
+  feedbackSuspected: boolean;
 }
 
 const HIT_THRESHOLD_MS = 20;
 const NEAR_THRESHOLD_MS = 50;
 const MAX_MATCH_THRESHOLD_MS = 150;
+const FEEDBACK_DETECT_WINDOW_MS = 5;      // ±5ms 内视为可疑回授
+const FEEDBACK_DETECT_RATIO_MIN = 0.6;    // 占比 > 60% 标记为 feedbackSuspected
 
 /** 计算中位数（用于校准 offset） */
 function median(arr: number[]): number {
@@ -149,6 +158,14 @@ export function scoreRhythm(
   const hitCount = matches.filter(m => m.grade === 'hit' || m.grade === 'near').length;
   const absentCount = matches.filter(m => m.grade === 'absent').length;
 
+  // Round 55 A5: 检测节拍器回授 — onset 异常密集落在 expected ±5ms 内, 远超人类扫弦精度
+  // 人类节奏感知阈值 ~20ms, ±5ms 的一致性几乎不可能是用户扫弦, 必是节拍器自我录入
+  const validMatches = matches.filter(m => m.deviationMs !== null);
+  const tightMatches = validMatches.filter(m => Math.abs(m.deviationMs!) <= FEEDBACK_DETECT_WINDOW_MS).length;
+  const tightRatio = validMatches.length > 0 ? tightMatches / validMatches.length : 0;
+  const feedbackSuspected = validMatches.length >= 8 && tightRatio > FEEDBACK_DETECT_RATIO_MIN;
+  //                       ^^^^^^^^^^^^^^^^^^^^^^^^ 至少 8 个有效匹配, 防小样本误报
+
   return {
     matches,
     meanAbsDeviationMs,
@@ -156,6 +173,7 @@ export function scoreRhythm(
     hitRate: expectedBeats.length > 0 ? hitCount / expectedBeats.length : 0,
     absentCount,
     calibrationOffsetMs: calibrationOffsetSec * 1000,
+    feedbackSuspected,
   };
 }
 

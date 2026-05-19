@@ -2802,3 +2802,68 @@ const isActive = activeNoteIndex > 0 && p.noteIndexes.includes(activeNoteIndex);
 - 合并轻量轮, +1.5pp → 84.5%
 
 
+#### Round 55 _2026-05-19_: A4 静音保护 + A5 回授警告 (合并轻量轮)
+
+**路线 1 第 2/5 轮 (83% → 84.5%, +1.5pp)**
+
+**Oracle 决策**:
+- A4 只做 (i) 静音保护, 不做 (ii) 颤音段合并 (没真实失败用例, 资深工程师视角的"想象优化")
+- A5 只做 C 方案 (UI 警告), 不擅自删 onset 数据 (留决策权给用户)
+- 不发明分级/dismiss/localStorage 这些用户不关心的状态
+
+**A4 修真 bug — medianFilter 改 medianFilterVoiced**
+
+R51 旧版整体中值滤波吞掉真实的短停顿:
+```
+输入 [60×30, 0×30, 60×30] (90帧 = ~260ms 含 30帧 = 87ms 静音)
+旧版: 静音被两侧 60 中位掉 → 整段合并 → 1 段 ≈260ms
+新版: 零帧保留, 下游 maxGapMs(50ms)>87ms → 输出 2 段 C4 ✓
+```
+
+**A5 检测节拍器回授**:
+- onset 落在 expected beat ±5ms 的比例 > 60% → feedbackSuspected=true
+- 人类节奏感知阈值 ~20ms, ±5ms 一致性几乎不可能是用户扫弦
+- 至少 8 个有效匹配才判定 (防 4 拍小样本误报)
+- ScoreResult 顶部黄色警告条: "检测到节拍器声可能被麦克风收录 (命中率可能虚高). 建议戴耳机或降低外放音量"
+
+**改动 (~80 行)**:
+
+| 文件 | 改动 | 职责 |
+|------|------|------|
+| `melodyPostprocess.ts` | medianFilter → medianFilterVoiced (~25 行) | 零帧保留, 有音帧自己平滑 |
+| `rhythmScorer.ts` | +12 行 | RhythmScore 加 feedbackSuspected; scoreRhythm 内统计 tightRatio |
+| `RhythmScoreTrainer.tsx` | +12 行 | ScoreResult 顶部条件渲染警告条 |
+
+**单元测试 (4+4 全过)**:
+
+A4:
+- ✅ Test 8 新增: 30帧C4+30帧静音+30帧C4 → 2 段 (静音保护真 bug 验证)
+- ✅ Test 3 颤音抑制不回归
+- ✅ Test 6 短间隙合并不回归
+- ✅ Test 4 简单旋律 3 段不回归
+
+A5:
+- ✅ 全 ±3ms → feedbackSuspected=true
+- ✅ 0-40ms 正常扫弦 → false
+- ✅ 50/50 混合 → false (边界 50% < 60%)
+- ✅ 4 拍小样本 → false (防误报)
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build: HTML 470.9 KB (+500B), 两道防护通过
+- 不打 APK 等用户指令
+
+**已知限制 (Oracle 强调)**:
+- A5 真机才能完整验证: 外放制造回授 vs 戴耳机. 当前合成测试只能验证算法正确性, 不能验证阈值是否符合真实场景
+
+**Karpathy 自检**:
+- ✅ Surgical: 3 个文件 +80 行, 不动 R47-54 其它代码; 主动删旧 medianFilter (孤儿)
+- ✅ Simplicity: 砍掉 (ii) 颤音合并 / A5 双阈值 / dismiss / 主动剔除
+- ✅ Goal-driven: 修真 bug (Test 8 验证), 不修想象 bug
+
+**完成度更新**: 83% → **84.5%** (路线 1 第 2/5 轮)
+
+**Round 56 候选 (路线 1 下一项)**:
+- A2 b/c 弹法策略 (固定 position 或最少手指移动), +1.5pp → 86%
+
+

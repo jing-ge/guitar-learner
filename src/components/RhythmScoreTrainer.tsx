@@ -364,6 +364,19 @@ function ScoreResult({ score, onRetry }: { score: RhythmScore; onRetry: () => vo
 
   return (
     <div style={{ marginTop: 14 }}>
+      {/* Round 55 A5: 检测到回授 → UI 警告条 (顶部, 不影响主数据显示) */}
+      {score.feedbackSuspected && (
+        <div style={{
+          marginBottom: 10, padding: 8, borderRadius: 6,
+          background: 'rgba(245,158,11,0.08)',
+          border: '1px solid rgba(245,158,11,0.3)',
+          fontSize: 12, color: 'var(--text-body)', lineHeight: 1.5,
+        }}>
+          ⚠ <b>检测到节拍器声可能被麦克风收录</b>（命中率可能虚高）。<br/>
+          建议戴耳机或降低外放音量后重测。
+        </div>
+      )}
+
       {/* 顶部数据卡 */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8,

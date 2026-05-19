@@ -53,18 +53,35 @@ function hzToMidiExact(hz: number): number {
   return 69 + 12 * Math.log2(hz / 440);
 }
 
-/** 中值滤波 (window 必须奇数, 边界用最近值填充) */
-function medianFilter(arr: number[], window: number): number[] {
+/**
+ * 中值滤波 (静音保护版, Round 55 A4):
+ *   - 对每个非零 (有音) 帧, 窗口内只收集非零邻居算中位
+ *   - 零帧 (静音) 保留 0 不参与计算
+ *
+ * 修复 R51 audit 提的真实 bug: [60,60,0,0,60,60] 旧版整体中值 → 全 60 (静音被吞)
+ *   导致 'DO-DO' 误并成一长音
+ *   新版: 零帧保持零, 下游 maxGapMs (50ms) 决定是否合并
+ *
+ * Round 55 oracle 决策: 不做 (ii) 颤音段合并 (没真实失败用例)
+ */
+function medianFilterVoiced(arr: number[], window: number): number[] {
   if (window <= 1) return arr.slice();
   const half = Math.floor(window / 2);
   const out = new Array(arr.length);
   const buf: number[] = [];
   for (let i = 0; i < arr.length; i++) {
+    if (arr[i] === 0) {
+      out[i] = 0;  // 静音帧保留
+      continue;
+    }
     buf.length = 0;
     for (let k = -half; k <= half; k++) {
       const idx = i + k;
-      if (idx >= 0 && idx < arr.length) buf.push(arr[idx]);
+      if (idx < 0 || idx >= arr.length) continue;
+      if (arr[idx] === 0) continue;  // 跳过窗口内的静音邻居
+      buf.push(arr[idx]);
     }
+    // buf 至少含 arr[i] 自己, 不会空
     buf.sort((a, b) => a - b);
     out[i] = buf[Math.floor(buf.length / 2)];
   }
@@ -100,7 +117,7 @@ export function postprocessMelody(
 
   // 2. 中值滤波 (只对有音帧, 静音保留为 0)
   // 简化做法: 整体 medianFilter, 静音(0) 会自然过滤掉孤立帧
-  const smoothed = medianFilter(midis, 5);
+  const smoothed = medianFilterVoiced(midis, 5);
 
   // 3. 合并相邻同 MIDI 帧成段
   const rawSegments: { midi: number; startFrame: number; endFrame: number }[] = [];
