@@ -1495,5 +1495,9 @@ input, select, textarea { font-size: 16px; }
 /* 五度圈底色 + 中心圆 (dark 默认: 深色一致; light 走浅色与主题协调) */
 .fifths-bg { fill: #1a2128; stroke: #374151; }
 .fifths-center { fill: #0f1419; stroke: #374151; }
-[data-theme="light"] .fifths-bg { fill: #f3f4f6; stroke: #d1d5db; }
-[data-theme="light"] .fifths-center { fill: #ffffff; stroke: #d1d5db; }
+
+/* 浅色主题: 底色用米白 (与 .card 浅色背景同色系, 不再发蓝灰), 中心圆纯白
+   12 段彩色用 filter 整体降饱和+提亮度, 不刺眼且仍能识别 12 个 hue */
+[data-theme="light"] .fifths-bg { fill: #fafaf9; stroke: #d6d3d1; }
+[data-theme="light"] .fifths-center { fill: #ffffff; stroke: #d6d3d1; }
+[data-theme="light"] .fifths-svg { filter: saturate(0.65) brightness(1.05); }
