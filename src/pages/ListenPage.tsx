@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 import ChordSummaryCard, { summarizeChords, parseRootPc } from '../components/ChordSummaryCard';
 import MelodyTimeline from '../components/MelodyTimeline';
+import FretboardMap from '../components/FretboardMap';
 import PlaybackControls from '../components/PlaybackControls';
 import {
   analyzeRecording, warmupEngine, isEngineReady, extractMelody,
@@ -458,11 +459,15 @@ export default function ListenPage() {
         </>
       )}
       {phase === 'done' && mode === 'melody' && melody && (
-        <MelodyTimeline
-          track={melody}
-          currentSec={playback.currentSec}
-          onSeek={playback.seek}
-        />
+        <>
+          <MelodyTimeline
+            track={melody}
+            currentSec={playback.currentSec}
+            onSeek={playback.seek}
+          />
+          {/* Round 53: 主旋律 → 吉他指板按法推荐 */}
+          {melody.notes.length > 0 && <FretboardMap notes={melody.notes} />}
+        </>
       )}
 
       <div className="card">
