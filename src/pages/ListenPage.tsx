@@ -92,6 +92,8 @@ export default function ListenPage() {
   const [history, setHistory] = useState<StoredRecording[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [compareIds, setCompareIds] = useState<Set<number>>(new Set());
+  // Round 64 oracle 审计: 存储满时 toast
+  const [saveWarning, setSaveWarning] = useState<string>('');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -263,8 +265,11 @@ export default function ListenPage() {
           try {
             await saveRecording(float32, audioBuffer.sampleRate, m, 'melody');
             await refreshHistoryRef.current?.();
-          } catch (e) {
+          } catch (e: any) {
             console.warn('[round62] save recording failed', e);
+            if (e?.message === 'STORAGE_QUOTA_EXCEEDED') {
+              setSaveWarning('存储空间不足, 此次录音未保存. 请删除部分历史录音.');
+            }
           }
         } else {
           const analysis = await analyzeRecording(float32, audioBuffer.sampleRate);
@@ -278,8 +283,11 @@ export default function ListenPage() {
           try {
             await saveRecording(float32, audioBuffer.sampleRate, analysis, 'chord');
             await refreshHistoryRef.current?.();
-          } catch (e) {
+          } catch (e: any) {
             console.warn('[round62] save recording failed', e);
+            if (e?.message === 'STORAGE_QUOTA_EXCEEDED') {
+              setSaveWarning('存储空间不足, 此次录音未保存. 请删除部分历史录音.');
+            }
           }
         }
       } catch (err: any) {
@@ -616,6 +624,23 @@ export default function ListenPage() {
         </div>
       )}
 
+      {/* Round 64 oracle 审计: 存储满 toast */}
+      {saveWarning && (
+        <div className="card" style={{
+          borderColor: 'rgba(245,158,11,0.4)',
+          background: 'rgba(245,158,11,0.06)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: 'var(--text-strong)' }}>⚠ {saveWarning}</span>
+            <button
+              onClick={() => setSaveWarning('')}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--text-muted)' }}
+              aria-label="关闭提示"
+            >×</button>
+          </div>
+        </div>
+      )}
+
       {/* Round 51/52: 结果按 mode 分支显示 + 回放控件 */}
       {/* Round 58 A3: PlaybackControls 跟当前 mode 的结果绑定, 切到无结果 mode 时不显示 */}
       {phase === 'done' && audioBlob && (mode === 'chord' ? !!result : !!melody) && (
@@ -630,7 +655,7 @@ export default function ListenPage() {
             currentSec={playback.currentSec}
             onSeek={playback.seek}
           />
-          {summary && <ChordSummaryCard summary={summary} />}
+          {summary && <ChordSummaryCard key={result.beatChords.length + ':' + result.key.key} summary={summary} />}
         </>
       )}
       {phase === 'done' && mode === 'melody' && melody && (

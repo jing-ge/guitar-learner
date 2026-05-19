@@ -63,13 +63,30 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-/** 保存录音 + 分析结果 */
+/**
+ * 保存录音 + 分析结果
+ *
+ * Round 64 oracle 审计修复:
+ *   - 满 MAX_RECORDINGS 时 LRU 截断 (自动删最旧 1 条)
+ *   - QuotaExceededError 抛出, 调用方可 toast 提示
+ */
 export async function saveRecording(
   pcm: Float32Array,
   sampleRate: number,
   analysis: any,
   mode: 'chord' | 'melody',
 ): Promise<number> {
+  // Round 64: LRU 截断 — 已到上限就删最旧一条 (避免 quota 慢慢逼近时静默失败)
+  try {
+    const existing = await listRecordings();
+    if (existing.length >= MAX_RECORDINGS) {
+      const oldest = existing[existing.length - 1];  // listRecordings 按降序, 末尾是最旧
+      if (oldest) await deleteRecording(oldest.id);
+    }
+  } catch {
+    // list 失败不阻塞保存
+  }
+
   const db = await openDB();
   const id = Date.now();
   const record: StoredRecording = {
@@ -88,7 +105,15 @@ export async function saveRecording(
     const store = tx.objectStore(STORE);
     const req = store.put(record);
     req.onsuccess = () => resolve(id);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => {
+      const err = req.error;
+      // QuotaExceededError → 抛给调用方提示用户清理
+      if (err && err.name === 'QuotaExceededError') {
+        reject(new Error('STORAGE_QUOTA_EXCEEDED'));
+      } else {
+        reject(err);
+      }
+    };
   });
 }
 
