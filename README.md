@@ -3428,3 +3428,151 @@ D. 移动适配 (`global.css` +12 行)
 - 共享组件 ui/ 待 R65+ 扩展替换其余 5 个组件 inline style
 
 
+#### Round 64.1 _2026-05-19_: Oracle 审计修复 (ChordSummaryCard key + 存储满 toast)
+
+R64 后 Oracle 二次校验发现 2 个隐患：
+
+**#3 ChordSummaryCard expanded state 跨录音泄漏 (真 bug)**:
+- ChordSummaryCard 内 `useState expanded` 没绑 key, React 复用同一实例
+- 切换历史录音 A → B 时, A 残留的 expanded=true 状态泄漏给 B
+- 修复: `<ChordSummaryCard key={result.beatChords.length + ':' + result.key.key} />`
+
+**#2 容量保护缺口 (隐性 TODO)**:
+- recordingStore.ts 注释说"满 20 条提示", 但 saveRecording 实际没实现
+- 修复: saveRecording 内 LRU 截断 (满 MAX_RECORDINGS 自动删最旧)
+- 修复: `QuotaExceededError` 包装为 `STORAGE_QUOTA_EXCEEDED`, ListenPage 展示橙色 toast
+
+**改动量**: ~30 行 (recordingStore.ts + ListenPage.tsx)
+**测试**: tsc + PWA build ✓ HTML 498.7 KB
+
+**Karpathy 自检**:
+- ✅ Surgical: 只动出问题的 2 处, 不顺手清理周边
+- ✅ Goal-driven: 跨录音切换 + 满容量两个具体 bug 都有可复现验证
+
+
+#### Round 64.2 _2026-05-19_: APK Icon + 3 bug 修复 (红色木槌 + status bar safe-top + 浅色主题修复)
+
+**问题源**：用户反馈 APK 图标默认蓝色不个性 + 浅色主题下五度圈 / 推荐卡显示问题
+
+**3 个 bug 一并修**:
+
+1. **App icon 红色木槌 SVG** (`public/icon.svg` 1024×1024)
+   - 之前: Expo 默认蓝色图标
+   - 新: 深色圆角背景 + 红色木槌渐变 SVG
+   - native/assets/icon.png + splash.png 同步生成 (Chrome headless 渲染 PNG)
+   - **关键发现**: Vite dev 用 `public/` 作静态资源根, 不是项目根 → 之前改根目录 icon.svg 不生效
+
+2. **APK status bar safe-top**
+   - 之前: app-header 顶部边贴到屏幕顶端, 与系统状态栏重叠
+   - 修复: `src/styles/global.css:98-105` 加 `padding-top: max(env(safe-area-inset-top), 4px)`
+   - 浏览器无 safe-area 时退化为 4px
+
+3. **浅色主题 5 个修复**:
+   - 推荐卡背景: 深色 `#1a1f2e` → 浅色 `#f8fafc`
+   - 五度圈 SVG: 加 `.fifths-bg` / `.fifths-center` className, 浅色下背景跟主题
+   - 暗色 token 复用: `var(--text-strong)` 等保证两套主题对齐
+
+**测试**: tsc + PWA build + Chrome headless 渲染 icon PNG ✓
+
+
+#### Round 64.3 _2026-05-19_: 五度圈浅色配色优化 (saturate 0.65)
+
+**用户反馈**: 浅色主题下五度圈"不太自然"
+
+之前浅色主题下：
+- 外圈底色 #f3f4f6 灰蓝, 与卡片米白色调不一致
+- 中心圆 #d1d5db 灰蓝边, 同上
+- 12 段彩色仍是高饱和虹色, 浅色背景下刺眼
+
+**修复**:
+- 外圈底 `#fafaf9` 米白 + `#d6d3d1` 暖灰边 (与 .card 浅色背景同色系)
+- 中心圆纯白 + 暖灰边
+- .fifths-svg 整体加 `filter: saturate(0.65) brightness(1.05)`
+  - 降 35% 饱和度 + 提 5% 亮度
+  - 12 段从"饱和虹色"变"水彩感", 浅色不刺眼仍可区分
+
+**测试**: PWA build ✓
+**Karpathy 自检**:
+- ✅ Surgical: 仅 1 个 CSS 文件, 4 行改动 + 1 行加 filter
+- ✅ 不顺手改深色主题 (深色下原配色 OK)
+
+
+#### Round 65 _2026-05-19_: 双轨自定义和弦走向 + APK status bar 配色
+
+**两个问题一次性闭环**:
+
+##### Bug #1 — APK 头部 tab 被 status bar 遮挡
+
+用户反馈: APK 头部 "吉他学习—离线版" 被系统状态栏盖住, 触摸主题切换不便
+
+R64.2 已加 CSS safe-area-inset-top, 但 Android WebView env(safe-area-inset-top) 未必有值。最简零风险方案: 让 status bar 与 app-header 同色融合。
+
+**修复**: `native/app.json` 加 `androidStatusBar.backgroundColor: "#0f1419"` (与 app-header 暗色同源), 用户感知不到边界, 也不开 edge-to-edge 避免布局突变。
+
+##### Bug #2 — 自定义和弦走向只能按音名, 不会算级数
+
+用户期望: 编自定义和弦走向时
+1. 可选「按音名编」(原模式, C/G/Am/F)
+2. 可选「按首调 + 级数编」(选 C 大调后点 V 自动落 G)
+3. 双轨显示: 单元上方音名, 下方级数 (C 下面 I, Am 下面 vi)
+4. 首调一变, 全部级数自动重算 (零数据迁移)
+
+**数据结构**:
+```ts
+interface ChordProgression {
+  id: string;
+  name: string;
+  desc: string;
+  chords: string[];          // 旧字段保留 (具体和弦 id)
+  key?: string;              // R65: 首调 (C / G / A...)
+  mode?: 'major' | 'minor';  // R65: 调式
+}
+```
+
+**关键函数**:
+```ts
+// 和弦 → 罗马数字 (双轨显示用)
+chordToDegree(chordId, key, mode) → 'I' | 'V' | 'vi' | ...
+
+// 罗马数字 → 具体和弦 id (按级数编时用)
+degreeToChordId('V', 'C', 'major') → 'G'
+degreeToChordId('iv', 'A', 'minor') → 'Dm'
+```
+
+**UI 改造** (ChordProgEditor in `src/pages/DrumMachinePage.tsx`):
+- 顶部加 "首调 / 调式" 选择 (零依赖原生 select, 不用 `.select` class 避开下拉箭头重叠)
+- 中间 "🎵 按音名编 / 🔢 按级数编" tab 切换
+- 按级数模式: 7 个级数按钮 (大调 I/ii/iii/IV/V/vi/vii° · 小调 i/ii°/III/iv/v/VI/VII), 当前调下不存在的级数自动禁用
+- 序列每个单元下方显示级数 (双轨)
+- 底部预览双轨: `C → Am → F → G` + `I - vi - IV - V`
+
+**预设填充**: 12 个内置走向全部填上 key/mode (C 大调 9 条 + A 大调 blues 1 条 + Em 小调 1 条 + C 大调 doo-wop)
+
+**Smoke test** (`/tmp/test-degree.mjs`):
+```
+C major: I→C ii→Dm iii→Em IV→F V→G vi→Am vii°→Bdim ✓
+A minor: i→Am ii°→Bdim III→C iv→Dm v→Em VI→F VII→G ✓
+G major: I→G ii→Am iii→Bm IV→C V→D vi→Em vii°→F#dim ✓
+D major: I→D ii→Em iii→F#m IV→G V→A vi→Bm vii°→C#dim ✓
+```
+
+**测试**: tsc + PWA build ✓ HTML 504 KB
+**EAS APK build**: `6e6a985d-9534-4232-9427-ef4e9563b2f9` (commit 5654527)
+
+**Karpathy 自检**:
+- ✅ 零数据迁移: 旧 chords[] 字段保留, key/mode 只是新增可选字段; 老 localStorage 数据加载自动当 C major
+- ✅ Surgical: chord-progressions.ts +60 行 (2 个新函数), ChordProgEditor 改 1 块 (~80 行)
+- ✅ Goal-driven smoke test: 4 个调 × 7 级数全验证
+- ✅ 砍掉 "纯级数编辑模式 (彻底改数据结构)" 和 "MIDI 输入" 两个过度设计选项
+
+
+#### Round 65.1 _2026-05-19_: select UI 微修 (避开 .select 下拉箭头重叠)
+
+R65 「首调 / 调式」选择器用了全局 `.select` class, 但该 class 强制 `padding-right: 28px` 给自画箭头留位, 与 R65 的 inline `padding: 2px 6px` 冲突, 导致 "大调" 文字与下拉箭头重叠。
+
+**修复**: 这俩 select 是紧凑工具栏控件, 不走 `.select`, 改用浏览器原生下拉 + 自定义紧凑 padding (`padding: 4px 8px; height: 28; border-radius: 6`)。
+
+**改动量**: 6 行 `src/pages/DrumMachinePage.tsx` + flexWrap 防小屏挤
+**测试**: dev server HMR 即时验证
+
+

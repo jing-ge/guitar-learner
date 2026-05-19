@@ -663,12 +663,16 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
           </div>
 
           {/* Round 65: 首调 + 调式 (用于级数显示) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: 'var(--bg-soft)', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: 'var(--bg-soft)', borderRadius: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>首调</span>
-            <select className="select" style={{ fontSize: 12, padding: '2px 6px' }} value={editing.key ?? 'C'} onChange={e => updateEditing({ key: e.target.value })}>
+            <select
+              style={{ fontSize: 12, padding: '4px 8px', height: 28, borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--bg)', color: 'var(--text-strong)' }}
+              value={editing.key ?? 'C'} onChange={e => updateEditing({ key: e.target.value })}>
               {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => <option key={k} value={k}>{k}</option>)}
             </select>
-            <select className="select" style={{ fontSize: 12, padding: '2px 6px' }} value={editing.mode ?? 'major'} onChange={e => updateEditing({ mode: e.target.value as 'major'|'minor' })}>
+            <select
+              style={{ fontSize: 12, padding: '4px 8px', height: 28, borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--bg)', color: 'var(--text-strong)' }}
+              value={editing.mode ?? 'major'} onChange={e => updateEditing({ mode: e.target.value as 'major'|'minor' })}>
               <option value="major">大调</option>
               <option value="minor">小调</option>
             </select>
