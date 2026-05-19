@@ -2326,3 +2326,168 @@ Essentia 输出 (`C / Am / F#m / Bm / D`) 与 CHORDS.id 命名 100% 对齐，无
 3. ChordDetailModal / ChordEarTrainer 可点击展开 ChordDiagram 查看按法
 
 
+#### Round 49.5 _2026-05-18_: APK 打包路径打通 (Essentia + EAS)
+
+**用户需求**: "打包看 APK 看真机效果"
+
+**3 个 fix 串联起来才走通 EAS preview build**:
+
+1. **`essentia.js` 改 npm registry** (commit `41d00eb`)
+   - 之前 `package.json` 写 `"essentia.js": "file:essentia.js-0.1.3.tgz"`, 但该 tgz 在 .gitignore 内
+   - EAS clone 仓库时拿不到, `npm ci` ENOENT → pre-install 失败
+   - 修: `npm install essentia.js@0.1.3` (npm 公开版本) → 依赖路径 `^0.1.3`
+
+2. **APK 专用 build:apk script + inlineDynamicImports** (vite.config.ts + package.json)
+   - APK WebView 走 `file://` 协议, dynamic import 同级 .js 风险 (round 48 PRD 预见)
+   - 新增 `VITE_INLINE_DYNAMIC=1 vite build` 开关 → rollup `output.inlineDynamicImports=true`
+   - 所有 chunk 合并进主 bundle, 单 HTML 含全部代码 (~2.9MB)
+   - PWA 模式默认仍 code-split, 首屏只 ~400KB
+
+3. **停止追踪 node_modules** (commit `2ec38c5`)
+   - 历史问题: `aa37ce3 init` 把 node_modules 一起入库, 2463 个文件
+   - `.gitignore` 加 node_modules 后 git 不会自动停止追踪已有文件
+   - 修: `git rm -rf --cached node_modules/`, 工作区不动仅停止追踪
+   - 不重写历史 (会破坏 origin)
+
+**EAS APK 触发**: 用 EXPO_TOKEN 机器人账号 (jingjingjing777) 触发 preview profile build,
+                  Android APK build 走 EAS 云端构建.
+
+
+#### Round 50.1 _2026-05-18_: APK 黑屏排查 (第一次尝试 — 不完整修复)
+
+**用户反馈**: APK 装上手机, 一片黑屏
+
+**初步诊断**: inline JS 里 React DOM 18 含 `"<script><\/script>"` 字面量
+- inline-dist.mjs 的 escapeForInlineScript() 只处理了 `</script>` 结束标签转义
+- 没处理 `<script` 开标签 → HTML parser 在中间截断 script tag
+- Chrome 桌面宽容此种 (其他模式仍能解析), Android WebView 严格 → 黑屏
+
+**修复**: 补 escape `<(script\b)/gi → <\\$1` + 加 build-time 回归保护
+        (检查 inline 后 `<script>` / `</script>` 标签配对数)
+
+**结果**: 新 APK build 仍黑屏 ❌ — 修复方向正确但**不是根因**
+
+
+#### Round 50.2 _2026-05-18_: APK 黑屏真正根因 (✅ 已解决)
+
+**Karpathy 自检**: 黑屏问题第二次失败, 必须深挖
+
+**真正根因诊断** (深度调查 commit `97e98dd`):
+- Vite 编译 essentia-engine.ts 的 `import('./essentia-wasm.es.js')` 会生成:
+  ```js
+  await Iu(() => import('./essentia-wasm.es.js'), [], import.meta.url)
+                                                       ^^^^^^^^^^^^^^^^
+  ```
+- inline-dist 把 `<script type="module">` 改成 `<script>` (classic) — 历史 commit 7fe20ab
+  注释 "noModule 替代 module 确保 file:// 下能执行" — 当年是基于外部 .js + file://
+- **classic <script> 不允许 `import.meta`** → 整个 bundle 语法错误
+- → React app 不启动 → 完全黑屏 (整个 inline 块无效)
+
+**反向验证**:
+- 下载旧黑屏 APK 解包 → `node -e "new Function(js)"` 报 "Cannot use import.meta outside a module" ✓
+- 修复后 `<script type="module">` → Node 模拟 ES module 加载语法 OK ✓
+- Headless Chrome file:// 加载 dist HTML 渲染成功, #root 4802 字符 ✓
+- 真机 APK 装机验证: **正常显示界面** ✅
+
+**修复**: inline-dist.mjs 一律输出 `<script type="module">`
+- 现代 Android WebView (Chrome 80+) inline module script 合法
+- Vite 5 prod target 默认 Chrome 87+, EAS Android minSdk 23 → WebView ≥ 80
+- 注: PWA 模式默认 build 主 bundle 也含 import.meta.url, 浏览器宽容没暴露,
+     实际上也是 bug, 一律改 module script 后 PWA 也更稳
+
+**新增回归保护** (build-time, 防下次 silent 回归):
+1. `<script>/</script>` 标签配对数检查 (round 50.1 已加)
+2. 含 `import.meta` 时必须是 `<script type="module">` (round 50.2 新增)
+- 任意一项失败 build 时 exit 1
+
+**经验**:
+- 浏览器 console 看不到 → 用 `new Function(js)` 在 Node 里模拟 classic script 解析
+- 当桌面 Chrome 跑得好但 WebView 不跑时, 怀疑 "WebView 更严格" 是对的方向, 但必须找到具体的不允许的语法
+- 深度 grep + AST 检查能发现 escape/解码层面的 bug, 这种 silent failure 没有 stderr
+
+
+#### Round 50 _2026-05-18_: 节奏稳定度评分训练 (Essentia.OnsetRate + 自动校准)
+
+**用户需求**: "Essentia 还有哪些功能没集成? 选最能提效的做"
+
+**Oracle PRD 选定**: B. 节奏稳定度评分 (砍掉了 A 主旋律扒带 / C 风格画像装饰)
+- 把"听节拍器"升级为"练节奏": mic 录扫弦 → onset 与拍点匹配 → 客观偏差 ms
+- 只做 1 件事, 砍掉新页面/历史趋势/Worker
+
+**架构 (~670 行新代码)**:
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `src/audio/rhythmScorer.ts` | 180 | 纯算法: 校准 offset + 最近邻匹配 + 阈值分级 |
+| `src/audio/essentia-engine.ts` | +30 | `detectOnsets(audio)` 包装 Essentia.OnsetRate |
+| `src/components/RhythmScoreTrainer.tsx` | 452 | UI 组件: idle→countdown→calibration→recording→done |
+| `src/pages/PracticePage.tsx` | +3 | rhythm tab 渲染 RhythmScoreTrainer |
+| `src/audio/synth.ts` | +7 | click() disconnect 时机修复 (oracle #5) |
+
+**核心算法 (rhythmScorer.ts)**:
+
+```
+1. computeCalibrationOffset(calibExpected, detectedOnsets):
+   - 对每个校准拍 expected, 在 detected 找 |Δ| < 300ms 最近 onset
+   - 返回 { offsetSec: median(deltas), matched: deltas.length }
+   - matched < 2 时 UI 阻止评分 → 显示 "校准失败" (oracle #3 必修)
+
+2. scoreRhythm(expected, detected, offset):
+   - adjustedOnsets = detected - offset (减系统延迟)
+   - 一对一最近邻匹配 (贪心): 每个 onset 只能匹配一个 expected
+   - 阈值分级: ≤20ms hit / ≤50ms near / ≤150ms miss / >150ms absent
+   - 输出: matches 数组 + 平均/带符号偏差 + 命中率 + 漏拍数
+```
+
+**UI 流程**:
+1. **idle**: BPM 三选 (60/80/100/120) + 大圆按钮
+2. **countdown** (4 拍): 节拍器响, 用户**不弹**, 提示"听节拍器"
+3. **calibrating** (4 拍): 用户跟拍扫弦, 自动算系统延迟 median
+4. **recording** (32 拍 = 8 小节): 持续扫弦
+5. **analyzing**: Essentia.OnsetRate → scoreRhythm
+6. **done**: 数据卡 (命中率/平均偏差/校准延迟) + 32 色块时间轴 + 反馈语
+
+**关键工程决策**:
+- 拍点用 `synth.getCurrentTime()` (AudioContext.currentTime) 记录, 抗 setTimeout 抖动
+- 录音用 MediaRecorder + 重采样到 44100Hz (Essentia.OnsetRate 必须)
+- mimeType 按 webm/opus → webm → mp4 优先级 isTypeSupported
+- cleanup() 先 `recorder.onstop = null` 再 stop, 防 unmount 后 setState (oracle #1 必修)
+
+**修复 synth.click 顺手 bug (oracle #5)**:
+- 旧: `setTimeout(disconnect, 200)` — 从调用瞬间起 200ms
+- 调用 `click(true, futureTime)` 一次预约多个未来 click 时, 全部 200ms 被 disconnect
+- → 节点断开但 osc.start 仍 schedule → 听不到声 (节拍器后半段哑火)
+- 修: `Math.max(200, (when - ctx.currentTime) * 1000 + 200)` 按播放时刻算
+
+**单元测试 (6+1 全过)**:
+1. 完美拍: hitRate=1
+2. 整体晚 50ms: signed dev=50ms
+3. 校准 offset 100ms → 校准后偏差 ≈ 0
+4. **校准空数据**: matched=0 (oracle #3 新增)
+5. 漏拍: absent=2
+6. 多扫 onset 不污染: hitRate=1
+7. 阈值分级: 5ms→hit / 30ms→near / 80ms→miss / 200ms→absent
+
+**Oracle 两次审计**:
+- 修复前: 列了 3 个 fix-before-ship (#3 校准空数据 / #1 cleanup 顺序 / #5 synth.click)
+- 修复后: 3 个都正确落地 + errorMsg whiteSpace:'pre-line' (1 字符顺手修)
+- 唯一已知遗留风险: 真机外放 mic 收到节拍器 click 回授 → onset 虚高
+  (Round 51 backlog: ±20ms 内 onset 视为回授剔除)
+
+**Karpathy 自检**:
+- ✅ Surgical: 1 个新算法文件 + 1 个新 UI 组件 + 3 处现有文件 +小改动
+- ✅ YAGNI: 砍了主旋律扒带 (留 Round 51 单独立项) / 风格画像装饰 / 历史趋势曲线 / Worker
+- ✅ Goal-driven: 7 个单元测试覆盖正常和边界 case
+- ✅ 不擅自改 ListenPage / Round 49 和弦听力训练
+
+**APK 真机验证**: ✅ 显示正常, 用户报告 "正常使用"
+
+
+**Round 51 候选方向**
+1. 真机使用 节奏评分反馈 — 命中率 / 校准 offset / 体验改进点
+2. 主旋律扒带 (PitchMelodia) — 录歌 → 主旋律音高轨 → 指板瀑布流学 solo
+3. 节奏评分外放回授剔除 (±20ms 内 onset 与节拍器 click 同位 → drop)
+4. 删除 ListenPage.legacy.tsx + 旧 chord-detector (经过 3 轮 Essentia 稳定)
+5. README 仓库瘦身 (历史 .git 69MB node_modules 死代码, 单独发轮)
+
+
