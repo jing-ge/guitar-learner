@@ -3268,3 +3268,66 @@ E. `ClassicProgressionCard` UI (+20 行)
 4. R52 录音文件上传 / R51 主旋律识别真机反馈
 
 
+#### Round 62 _2026-05-19_: 录音持久化 + 多录对比 (真实场景驱动)
+
+**用户真实场景反馈 (Oracle R61 整体评估后)**:
+> 文件上传无意义 — 大家不存 mp3, 真实场景是"播放陌生歌现场识别"
+> 教学/课程无意义 — 我熟悉吉他, 知道自己弱点
+
+**Oracle 重新校准 R62**: 录音持久化 + 多录对比 (+10pp, 2 天)
+- 真实可用上限从 R61 评估的 45% → 55% (释放教学/曲库扣分)
+- R62 目标: "一次性工具" 变 "现场资料库"
+
+**当前最大体验断崖**:
+- 朋友放副歌 → 录 → 出结果
+- 朋友放主歌 → 再录 → **覆盖上次结果**
+- 出去玩 → 回家 → **内存早没了**
+
+**实施 (~350 行)**:
+
+A. `src/audio/recordingStore.ts` (新, 145 行)
+   IndexedDB v1 单 store, keyPath=id (Date.now())
+   - saveRecording(pcm, sampleRate, analysis, mode) → 返回 id
+   - listRecordings() → 按 createdAt 降序
+   - getRecording(id) / deleteRecording(id)
+   - estimateStorage() → navigator.storage.estimate 用量监控
+   - Float32Array 转 Blob 存 (避免 IDB 大对象序列化爆炸)
+
+B. `ListenPage.tsx` 改动 (+200 行)
+   - 录完自动 await saveRecording(...) (await refreshHistory)
+   - 顶部加 "📼 历史录音 (N)" 折叠卡片, 默认收起
+   - 每条历史展示: 时间相对值 (5 分钟前) / mode 图标 / 主调+和弦数 / 删除按钮
+   - 点击历史 → loadHistory(id): 还原 mode + result/melody + 切到 done 阶段
+   - **checkbox 选 ≤ 3 条 → 多录对比卡片** (RecordingCompareView)
+   - 显示 20 条上限警告
+
+C. `RecordingCompareView` (新组件, 嵌入 ListenPage)
+   - 横向并排 2-3 列, 每列展示: 主调 / BPM / 和弦数 / Top 3 和弦 (chord mode)
+   - melody mode 展示音符数 + 前 10 个音名
+
+**已知妥协 (Karpathy 显式)**:
+- 历史录音不支持音频回放 (存 raw PCM 不能直接 decodeAudioData, 需要 WAV 编码, 留 R63+)
+- 用户可对比分析结果, 不能重听音频
+- 自动清理逻辑没做 (容量到 20 条手动删, 用户没要求自动清理)
+
+**Karpathy 砍掉**:
+- ❌ 录音重命名 / tag / 收藏
+- ❌ 自动清理 (用户没要求)
+- ❌ 跨段共享 keyRoot 智能合并
+- ❌ 导出 WAV (YAGNI)
+- ❌ 音频回放历史录音 (raw PCM → WAV 编码需要 ~80 行, 留 R63+)
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build ✓ (HTML 488.6 KB → ~495 KB, +6.4 KB)
+- 三首 wav 回归: R61 识别结果不变 (检查 progression-eval.mjs 输出)
+
+**完成度更新 (Oracle 真实场景校准后)**: 55% → **65%** (R62 +10pp 录音持久化)
+
+**Round 63 候选**: UI 升级
+- 共享组件抽出 Card/Badge/ChordChain (~200 行 refactor)
+- ChordSummaryCard 概要/详情 (~50 行)
+- 移动 360px 适配 (~80 行)
+- 砍: 视觉 token 化 / 动画 / 主题切换
+
+
