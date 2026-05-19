@@ -16,6 +16,7 @@ import {
   type ClassicProgression,
 } from '../data/classicProgressions';
 import ChordDiagram from './ChordDiagram';
+import { Card, Badge, ChordChain } from './ui';
 
 const SHARP_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const FLAT_TO_SHARP_LOCAL: Record<string,string> = { Bb:'A#', Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#' };
@@ -321,8 +322,24 @@ export function summarizeChords(
 
 export default function ChordSummaryCard({ summary }: { summary: ChordSummary }) {
   const [selectedChord, setSelectedChord] = useState<string | null>(null);
+  // Round 63: 概要/详情切换 — 默认概要 (top 4 和弦 + top 2 走向 strong 优先)
+  const [expanded, setExpanded] = useState(false);
 
   if (summary.uniqueChords.length === 0) return null;
+
+  // Round 63: 概要模式数据切片
+  // 和弦: top 4 (已按 count 降序), 展开后显 top 6
+  const chordsToShow = expanded ? summary.uniqueChords : summary.uniqueChords.slice(0, 4);
+  const hiddenChordCount = summary.uniqueChords.length - chordsToShow.length;
+  // 走向: top 2 strong > top 2 weak, 展开后全显
+  const strongMatches = summary.classicMatches.filter(m => m.strength === 'strong');
+  const weakMatches = summary.classicMatches.filter(m => m.strength === 'weak');
+  const matchesToShow = expanded
+    ? summary.classicMatches
+    : (strongMatches.length >= 2
+      ? strongMatches.slice(0, 2)
+      : [...strongMatches, ...weakMatches.slice(0, 2 - strongMatches.length)]);
+  const hiddenMatchCount = summary.classicMatches.length - matchesToShow.length;
 
   // Essentia 输出名 → CHORDS 库查找：直接按 id 匹配
   const chordDef = selectedChord ? CHORDS.find(c => c.id === selectedChord) : null;
@@ -338,7 +355,7 @@ export default function ChordSummaryCard({ summary }: { summary: ChordSummary })
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>主要和弦</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {summary.uniqueChords.map(c => (
+            {chordsToShow.map(c => (
               <button
                 key={c.name}
                 onClick={() => setSelectedChord(c.name)}
@@ -358,13 +375,13 @@ export default function ChordSummaryCard({ summary }: { summary: ChordSummary })
           </div>
         </div>
 
-        {/* Round 59: 经典走向 (顶部突出) */}
+        {/* Round 59: 经典走向 (顶部突出); Round 63: 概要模式切 top 2 */}
         {summary.classicMatches.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 6 }}>
               🎯 经典走向
             </div>
-            {summary.classicMatches.map((m, i) => (
+            {matchesToShow.map((m, i) => (
               <ClassicProgressionCard
                 key={i}
                 match={m}
@@ -372,6 +389,23 @@ export default function ChordSummaryCard({ summary }: { summary: ChordSummary })
               />
             ))}
           </div>
+        )}
+
+        {/* Round 63: 展开/收起按钮 (隐藏 > 0 时显示) */}
+        {(hiddenChordCount > 0 || hiddenMatchCount > 0) && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{
+              width: '100%', padding: '6px 10px', marginBottom: 8,
+              fontSize: 12, color: 'var(--text-muted)',
+              background: 'transparent', border: '1px dashed var(--line-soft)',
+              borderRadius: 6, cursor: 'pointer',
+            }}
+          >
+            {expanded
+              ? '收起 ▲'
+              : `展开看全部 ▼ (${hiddenChordCount > 0 ? `+${hiddenChordCount} 和弦` : ''}${hiddenChordCount > 0 && hiddenMatchCount > 0 ? ' / ' : ''}${hiddenMatchCount > 0 ? `+${hiddenMatchCount} 走向` : ''})`}
+          </button>
         )}
 
         {/* 旧的"重复走向" 仅在没经典匹配时降级显示 */}
@@ -444,28 +478,17 @@ function ClassicProgressionCard({ match, onChordClick }: {
   const mid = Math.ceil(chords.length / 2);
   const firstHalf = isLong ? chords.slice(0, mid) : chords;
   const secondHalf = isLong ? chords.slice(mid) : [];
-  // Round 61: 匹配度 = 1 - unitDist (0%-100%), 弱匹配整体降饱和
+  // Round 61: 匹配度 = 1 - unitDist (0%-100%)
   const matchPct = Math.max(0, Math.round((1 - unitDist) * 100));
   const isWeak = strength === 'weak';
 
   return (
-    <div style={{
-      padding: '10px 12px', marginBottom: 8, borderRadius: 8,
-      background: isWeak ? 'rgba(245,158,11,0.05)' : 'rgba(245,158,11,0.10)',
-      border: isWeak ? '1px solid rgba(245,158,11,0.18)' : '1px solid rgba(245,158,11,0.30)',
-    }}>
+    <Card variant={isWeak ? 'weak' : 'highlight'}>
       {/* 第一行: nickname (左, 含弱匹配徽章) + 度数串 ID (右) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
           {progression.nickname}
-          {isWeak && (
-            <span style={{
-              fontSize: 10, padding: '1px 6px', borderRadius: 4,
-              background: 'rgba(245,158,11,0.18)', color: 'var(--text-muted)',
-              border: '1px solid rgba(245,158,11,0.30)', marginLeft: 6,
-              fontWeight: 500,
-            }}>近似</span>
-          )}
+          {isWeak && <Badge tone="warn">近似</Badge>}
         </span>
         <span style={{
           fontSize: 13, fontWeight: 600, color: 'var(--brand)',
@@ -475,7 +498,7 @@ function ClassicProgressionCard({ match, onChordClick }: {
         </span>
       </div>
 
-      {/* 第二行: 罗马数字 (轻) */}
+      {/* 第二行: 罗马数字 */}
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'serif', letterSpacing: 1 }}>
         {progression.roman}
       </div>
@@ -502,29 +525,7 @@ function ClassicProgressionCard({ match, onChordClick }: {
           匹配 {matchPct}% · ×{count}
         </span>
       </div>
-    </div>
-  );
-}
-
-/** 和弦链条 (D → A → Bm → G), 每个和弦可点击展开按法 */
-function ChordChain({ chords, onClick }: { chords: string[]; onClick: (ch: string) => void }) {
-  return (
-    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)', letterSpacing: 1 }}>
-      {chords.map((ch, idx) => (
-        <span key={idx}>
-          <button
-            onClick={() => onClick(ch)}
-            style={{
-              background: 'transparent', border: 'none', padding: 0,
-              font: 'inherit', color: 'inherit', cursor: 'pointer',
-              textDecoration: 'underline', textDecorationStyle: 'dotted',
-              textDecorationColor: 'var(--text-muted)',
-            }}
-          >{ch}</button>
-          {idx < chords.length - 1 && <span style={{ color: 'var(--text-muted)' }}> → </span>}
-        </span>
-      ))}
-    </div>
+    </Card>
   );
 }
 

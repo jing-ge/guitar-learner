@@ -1469,3 +1469,17 @@ input, select, textarea { font-size: 16px; }
   background: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.04) 100%);
 }
 [data-theme="light"] .daily-mistakes { background: rgba(0,0,0,0.03); }
+
+/* ============ Round 63: 移动 360px 适配 ============ */
+/* 节奏评分 32 色块在窄屏强制 16×2 行 (默认横排不够宽) */
+@media (max-width: 480px) {
+  /* ChordTimeline / 节奏评分时间轴等横向容器, 允许横向滚动 */
+  .listen-overflow-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* 走向卡片里的和弦链, 窄屏字号微调 */
+  .chord-chain-narrow {
+    font-size: 13px;
+  }
+}

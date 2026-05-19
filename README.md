@@ -3331,3 +3331,50 @@ C. `RecordingCompareView` (新组件, 嵌入 ListenPage)
 - 砍: 视觉 token 化 / 动画 / 主题切换
 
 
+#### Round 63 _2026-05-19_: UI 升级 (共享组件 + 概要/详情 + 移动适配)
+
+**Oracle PRD 决策**:
+- ✅ 共享组件抽出 (Card/Badge/ChordChain/Stat/SectionTitle)
+- ✅ ChordSummaryCard 概要默认显 top 4 和弦 + top 2 走向 (strong 优先)
+- ✅ 移动 360px 适配 (轻量 @media + flex-wrap)
+- ❌ 砍掉视觉 token 化 (双重工作, 共享组件已隐含统一)
+- ❌ 砍掉动画 / 主题切换 (无可验证目标)
+
+**改动 (~280 行)**:
+
+A. `src/components/ui/index.tsx` (新, 145 行)
+   - Card: 4 variant (normal/highlight/weak/danger), padding/marginBottom 默认值
+   - Badge: 5 tone (brand/muted/warn/success/danger)
+   - ChordChain: 和弦链 D→A→Bm→G, 可选 onClick
+   - Stat: label+value+sub
+   - SectionTitle: 区块小标题
+
+B. ChordSummaryCard 接 Card/Badge/ChordChain (~60 行替换)
+   - ClassicProgressionCard: inline style → <Card variant={isWeak?'weak':'highlight'}>
+   - 弱匹配徽章 → <Badge tone="warn">近似</Badge>
+   - 删私有 ChordChain 定义, 用 ui/ 共享版本
+
+C. ChordSummaryCard 概要/详情 (~30 行)
+   - useState expanded, 默认 false
+   - 概要模式: 和弦 top 4, 走向 top 2 (strong 优先 → 弱补齐)
+   - "展开看全部 ▼ (+N 和弦 / +M 走向)" 按钮
+   - 展开后全显, 收起按钮 "▲"
+
+D. 移动适配 (`global.css` +12 行)
+   - @media (max-width: 480px) 加 .listen-overflow-x 横滚 + .chord-chain-narrow 字号
+   - 注: RhythmScoreTrainer 32 色块已用 flexWrap, 360 自然 2 行
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build ✓ (HTML 495 KB)
+- ChordSummaryCard 默认显 ≤ 1 屏 (top 4 + top 2)
+- 共享组件 6 个使用点 (R64 进一步扩展)
+
+**Karpathy 自检**:
+- ✅ Surgical: 1 新文件 + 1 文件改 (其他 5 个组件等 R64 一起换)
+- ✅ Goal-driven: ChordSummaryCard 首屏 ≤ 1 屏 (概要模式)
+- ✅ 砍掉 token 化 / 动画 / 主题 (3 个看似合理但无验证目标的选项)
+
+**Round 64**: 死代码清理 (legacy / 老 eval / 重复 helper)
+
+
