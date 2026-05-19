@@ -45,11 +45,14 @@ function CircleSvg({ selected, onSelect, showMinor }: CircleSvgProps) {
   const outerR = 170, innerR = 108, minorR = 70;
 
   return (
-    <svg viewBox="0 0 400 400" style={{ width: '100%', maxWidth: 380, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}>
-      {/* 五度圈是固定深调可视化（即使在浅色主题下也维持暗调），让 12 段彩色更突出。
-          以下 hex 故意不走 token，仅是 SVG 视觉素材色，与产品主题脱钩。 */}
+    <svg
+      viewBox="0 0 400 400"
+      className="fifths-svg"
+      style={{ width: '100%', maxWidth: 380, display: 'block', margin: '0 auto', touchAction: 'manipulation' }}
+    >
+      {/* Round 64.2: 外圈底 + 中心圆 用 className 走 theme; 12 段彩色仍硬编码 (彩色识别保持) */}
       {/* 底色 */}
-      <circle cx={cx} cy={cy} r={outerR + 8} fill="#1a2128" stroke="#374151" strokeWidth={2} />
+      <circle cx={cx} cy={cy} r={outerR + 8} className="fifths-bg" strokeWidth={2} />
 
       {/* 12 个扇区 */}
       {FIFTHS_ORDER.map((_, idx) => {
@@ -145,7 +148,7 @@ function CircleSvg({ selected, onSelect, showMinor }: CircleSvgProps) {
       })}
 
       {/* 中心装饰 */}
-      <circle cx={cx} cy={cy} r={showMinor ? minorR - 2 : innerR - 2} fill="#0f1419" stroke="#374151" strokeWidth={1} />
+      <circle cx={cx} cy={cy} r={showMinor ? minorR - 2 : innerR - 2} className="fifths-center" strokeWidth={1} />
       <text x={cx} y={cy - 6} fontSize={14} fontWeight={600} fill="#f59e0b" textAnchor="middle">五度圈</text>
       <text x={cx} y={cy + 12} fontSize={10} fill="#9ca3af" textAnchor="middle">Circle of Fifths</text>
     </svg>

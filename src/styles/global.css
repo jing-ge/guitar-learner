@@ -97,9 +97,10 @@ a:focus-visible,
 }
 .app-header {
   position: sticky; top: 0; z-index: 10;
-  height: var(--header-h);
+  height: calc(var(--header-h) + var(--safe-top));
+  padding-top: var(--safe-top);  /* Round 64.2: 修 Android APK status bar 遮挡顶部 tab */
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 14px;
+  padding-left: 14px; padding-right: 14px;
   background: linear-gradient(180deg, rgba(17,24,43,0.96) 0%, rgba(15,20,25,0.92) 100%);
   border-bottom: 1px solid var(--line-soft);
   backdrop-filter: blur(12px);
@@ -1483,3 +1484,16 @@ input, select, textarea { font-size: 16px; }
     font-size: 13px;
   }
 }
+
+/* ============ Round 64.2: 浅色主题补漏 (recommend-card + 五度圈) ============ */
+[data-theme="light"] .recommend-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f9fafb 100%);
+  border-color: rgba(217,119,6,0.30);
+  box-shadow: 0 0 0 1px rgba(217,119,6,0.18), 0 12px 36px rgba(217,119,6,0.08);
+}
+
+/* 五度圈底色 + 中心圆 (dark 默认: 深色一致; light 走浅色与主题协调) */
+.fifths-bg { fill: #1a2128; stroke: #374151; }
+.fifths-center { fill: #0f1419; stroke: #374151; }
+[data-theme="light"] .fifths-bg { fill: #f3f4f6; stroke: #d1d5db; }
+[data-theme="light"] .fifths-center { fill: #ffffff; stroke: #d1d5db; }
