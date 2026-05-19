@@ -94,10 +94,19 @@ function matchClassicProgressions(
   keyRoot: number,
   scale: 'major' | 'minor',
 ): ClassicMatch[] {
-  // Step 1: 找所有主和弦起手位置
+  // Step 1: 找所有合法起手位置
+  // Round 60: 只切 I 起手会漏掉 vi/IV 起手的旋转变体 (如晴天 Em-C-G-D = 6415 vi-IV-I-V),
+  //   导致大调侧评分被关系小调侧反超 → 误翻转.
+  //   解法: 大调允许 {I, vi, IV} 起手, 小调允许 {i, III, VI} 起手 (词典实际起手度数的并集).
+  //   词典里大调侧起手度数: 1564/1645/1465/1456/1451/15634 都是 0(I); 6415/6451 是 9(vi); 4561/4536251 是 5(IV).
+  //   小调侧目前 4 条全是 0(i) 起手, 扩到 {3,8} 是对称性预留, 不影响当前匹配.
+  const startDegrees: Set<number> = scale === 'major'
+    ? new Set([0, 9, 5])      // I / vi / IV
+    : new Set([0, 3, 8]);     // i / III / VI
   const iStartIndices: number[] = [];
   for (let i = 0; i < folded.length; i++) {
-    if (folded[i].rootPc === keyRoot) iStartIndices.push(i);
+    const deg = ((folded[i].rootPc - keyRoot) % 12 + 12) % 12;
+    if (startDegrees.has(deg)) iStartIndices.push(i);
   }
 
   // Step 2: 对每条**适用当前 scale 的**词典精确匹配
