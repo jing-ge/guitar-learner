@@ -2491,3 +2491,91 @@ Essentia 输出 (`C / Am / F#m / Bm / D`) 与 CHORDS.id 命名 100% 对齐，无
 5. README 仓库瘦身 (历史 .git 69MB node_modules 死代码, 单独发轮)
 
 
+#### Round 51 _2026-05-18_: 主旋律扒带 (PitchMelodia + SVG 时间轴)
+
+**用户需求**: "Essentia 还有哪些功能没集成? 选最能提效的做" → "感觉 [主旋律扒带] 价值大一点"
+
+**用户追问**: "有分离各种乐器和人声的算法吗"
+
+**人声/伴奏分离调研结论**:
+- ❌ essentia.js **没有** 现成的人声/乐器分离算法 (HpsModelAnal/HprModelAnal 是谐波 vs 噪声残差, 不是声部分离)
+- ⚠️ 业界主流 (Spleeter/Demucs/Open-Unmix) 模型 30-200MB, 与 PWA inline 单 HTML 架构冲突
+- ⚠️ 浏览器/WASM port 质量打折 + 推理 30-90s, 破坏 PRD ≤8s 用户预期
+- ✅ **决定不做分离**, MVP 收窄场景为「清唱/单音哼唱」, UI 文案明示能力边界
+
+**Node probe 实测发现 (任务 0)**:
+- PitchMelodia 在合成纯 sine "两只老虎": **77% 帧命中** (正确识别 C4-G4 sequence) ✅
+- PitchMelodia 在带伴奏流行歌 (晴天 G major, 卡农 D major): Hz 平均 100-230Hz, **跟到 bass 而非人声** ⚠️
+- PredominantPitchMelodia (默认): 流行歌略好 (人声八度区), 但 sine 单音命中骤降到 21.9% (voicing tolerance 严格)
+- **选择**: PitchMelodia 默认参数 + UI 文案明示场景, **不做参数调优** (清唱/伴奏取舍永远存在)
+
+**核心算法 (melodyPostprocess.ts, 155 行 + 7 单元测试)**:
+
+```
+PitchMelodia 输出 (Hz/frame) → postprocessMelody:
+  1. Hz → MIDI 连续值 (log2)
+  2. 量化到最近整数 MIDI
+  3. 中值滤波 (window=5 帧) — 抑制颤音/瞬时跳变
+  4. 合并相邻同 MIDI 帧成段
+  5. 过滤短段 (< 80ms = 噪声)
+  6. 合并相邻同 MIDI 段 (中间 < 50ms 静音可拼接)
+→ MelodyNote[] {midi, startSec, durSec, noteName}
+```
+
+**单元测试 7 全过**:
+- 全静音 → 空
+- 100 帧 C4 → 1 段
+- **颤音抑制**: 100 帧 C4 + 散落 3 帧 C#4 → 仍 1 段 C4
+- C4→D4→E4 三段
+- **短段过滤**: 20 帧 D4 (~58ms) 被丢弃
+- **段拼接**: C4 + 10 帧静音 + C4 → 合并 1 段
+- MIDI range ±2 padding
+
+**改动**:
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `src/audio/melodyPostprocess.ts` | +155 | 纯算法 + 类型定义, 不依赖 essentia |
+| `src/audio/essentia-engine.ts` | +45 | `extractMelody(audio)`: PitchMelodia 包装 + postprocess |
+| `src/components/MelodyTimeline.tsx` | +180 | SVG 时间轴 (X=时间 Y=音高) + 音名序列文本 fallback |
+| `src/pages/ListenPage.tsx` | +60 | 加 mode tab 'chord'/'melody' + 录音流程按 mode 分支 |
+| `scripts/melody-probe.mjs` | +135 | Node 端 probe 脚本 (验证算法可用 + 性能) |
+
+**UI 设计**:
+- ListenPage 顶部加 mode tab: 🎵 和弦/调性 vs 🎼 主旋律
+- melody mode 时长选择: 5/10/15s (默认 10s) — 防 PitchMelodia 长录音爆 RAM
+- 结果: SVG 时间轴 (音符方块按 pitch class 染色 + 内嵌音名) + 下方音名序列文本 (可选中复制) + UI 文案明示场景限制
+- 音高范围 auto fit (min/max MIDI ±2 padding), 每秒一个时间刻度
+- 录音中切 mode 被 disabled 阻止 (race 防护)
+
+**Oracle PRD + 实施后审计 (ora-1 复用)**:
+- PRD 决策: Q1 ListenPage tab / Q2 仅录音 / Q3 静态时间轴 (砍指板高亮+Synthesia) / Q4 进度环 / Q5 可视化+音名
+- 实施后审计: 0 阻塞, 5 个 🟡 改进点, 2 个本轮顺手修:
+  · ✅ `wordBreak: 'break-all'` → `'overflowWrap: anywhere'` (防 C#4 断字)
+  · ✅ ListenPage 顶部文案不再硬编码 10-30s (改成 "录一段音频")
+  · 留 Round 52: medianFilter 改只平滑有音帧 / 颤音烈时段合并 / recordSession melody 语义
+- 把握判定: **高** (Round 50+51 完全独立 tab, 共享只有 loadEssentia singleton)
+
+**性能 (Node 实测)**:
+- 15s 卡农: 1.71s 处理 (8.8x realtime)
+- 15s 晴天: 2.14s
+- 7s 合成 sine: 0.79s
+- 移动端预估 1.5-3x 慢 → 4-7s 在 PRD ≤8s 范围内
+
+**Karpathy 自检**:
+- ✅ Surgical: 2 个新文件 + 2 处现有改动, Round 47-50 代码一行不动
+- ✅ YAGNI: 砍掉了文件上传 / 指板高亮 / Synthesia 瀑布流 / 播放回放 / MIDI 导出 / 弹法推荐 / 进度百分比 / 人声分离
+- ✅ Goal-driven: 7 单元测试 + Node probe 真音频验证, 不靠"应该能行"
+- ✅ 不假设: 显式承认 PitchMelodia 在带伴奏歌曲不准, UI 文案明示
+
+**已知限制 (UI 文案明示)**:
+- 哼唱单音 / 弹单音旋律效果最佳
+- 带和声/伴奏的歌曲可能跟错声部 (跟到 bass 或伴奏)
+- 颤音/滑音烈时, 后处理可能产生锯齿状音符段
+
+**Round 52 候选方向**
+1. 主旋律 → 指板按法推荐 (每音映射到吉他弦/品)
+2. medianFilter 改进 (只平滑有音帧)
+3. 删除 ListenPage.legacy.tsx + 旧 chord-detector (经 4 轮 Essentia 稳定)
+4. 录音播放回放 + 时间游标
+
+

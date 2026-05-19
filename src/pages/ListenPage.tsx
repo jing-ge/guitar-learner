@@ -12,7 +12,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 import ChordSummaryCard, { summarizeChords, parseRootPc } from '../components/ChordSummaryCard';
-import { analyzeRecording, warmupEngine, isEngineReady, type AnalysisResult, type BeatChord } from '../audio/essentia-engine';
+import MelodyTimeline from '../components/MelodyTimeline';
+import {
+  analyzeRecording, warmupEngine, isEngineReady, extractMelody,
+  type AnalysisResult, type BeatChord, type MelodyTrack,
+} from '../audio/essentia-engine';
 import { vibrate } from '../utils/haptic';
 import { recordSession } from '../utils/progress';
 
@@ -20,8 +24,13 @@ const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
 type Phase = 'idle' | 'requesting' | 'recording' | 'analyzing' | 'done' | 'error';
 
+// Round 51: 两种模式 — 和弦/调性识别 vs 主旋律扒带
+type Mode = 'chord' | 'melody';
+
 const DURATION_OPTIONS = [10, 20, 30] as const;
-type Duration = typeof DURATION_OPTIONS[number];
+// Round 51: 主旋律模式仅支持 ≤15s, 防 PitchMelodia 在长录音上爆 RAM/超时
+const MELODY_DURATION_OPTIONS = [5, 10, 15] as const;
+type Duration = number;
 
 /**
  * Round 48: WebAssembly 能力检测（防 Expo WebView file:// 下 dynamic import 失败）
@@ -59,6 +68,7 @@ function pickMimeType(): string | undefined {
 
 export default function ListenPage() {
   const [phase, setPhase] = useState<Phase>('idle');
+  const [mode, setMode] = useState<Mode>('chord');
   const [duration, setDuration] = useState<Duration>(20);
   const [micState, setMicState] = useState<MicPermState>('idle');
   const [recordedSec, setRecordedSec] = useState(0);
@@ -66,6 +76,7 @@ export default function ListenPage() {
   const [waveform, setWaveform] = useState<number[]>([]);  // 滚动波形（最近 60 帧）
   const [engineReady, setEngineReady] = useState(isEngineReady());
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [melody, setMelody] = useState<MelodyTrack | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -122,6 +133,7 @@ export default function ListenPage() {
     setMicState('requesting');
     setErrorMsg('');
     setResult(null);
+    setMelody(null);
     setWaveform([]);
     setRecordedSec(0);
     setLevel(0);
@@ -206,15 +218,26 @@ export default function ListenPage() {
         await decodeCtx.close();
 
         const float32 = audioBuffer.getChannelData(0);
-        const analysis = await analyzeRecording(float32, audioBuffer.sampleRate);
-        setResult(analysis);
-        setPhase('done');
-        vibrate(20);
 
-        // 记录练习 session（用于 progress 统计）
-        try {
-          recordSession('listen', analysis.beatChords.length, analysis.beatChords.length, Math.round(recordedSec));
-        } catch {}
+        // Round 51: 按 mode 分支 — chord 走 analyzeRecording, melody 走 extractMelody
+        if (mode === 'melody') {
+          const m = await extractMelody(float32);
+          setMelody(m);
+          setPhase('done');
+          vibrate(20);
+          try {
+            recordSession('melody', m.notes.length, m.notes.length, Math.round(recordedSec));
+          } catch {}
+        } else {
+          const analysis = await analyzeRecording(float32, audioBuffer.sampleRate);
+          setResult(analysis);
+          setPhase('done');
+          vibrate(20);
+          // 记录练习 session（用于 progress 统计）
+          try {
+            recordSession('listen', analysis.beatChords.length, analysis.beatChords.length, Math.round(recordedSec));
+          } catch {}
+        }
       } catch (err: any) {
         console.error('[round47] analyze failed', err);
         setErrorMsg('分析失败：' + (err?.message || String(err)));
@@ -239,7 +262,7 @@ export default function ListenPage() {
         try { recorder.stop(); } catch {}
       }
     }, 100);
-  }, [duration]);
+  }, [duration, mode]);
 
   const stopRecording = useCallback(() => {
     // Round 47 review: 立刻切到 analyzing，避免 onstop 异步触发期间 UI 卡死感
@@ -251,6 +274,7 @@ export default function ListenPage() {
     cleanup();
     setPhase('idle');
     setResult(null);
+    setMelody(null);
     setErrorMsg('');
     setRecordedSec(0);
     setWaveform([]);
@@ -278,7 +302,8 @@ export default function ListenPage() {
       <div className="card">
         <h2>🎧 听歌识别 (Essentia)</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          离线模式：录一段 10-30s 音频 → 用 Essentia.js 卡节拍分析和弦走向 + 调性 + BPM
+          离线模式：录一段音频 → 用 Essentia.js 分析<br/>
+          <span style={{ fontSize: 12 }}>「和弦/调性」识别和弦走向 + 调性 + BPM｜「主旋律」提取音高轨</span>
         </p>
       </div>
 
@@ -295,11 +320,48 @@ export default function ListenPage() {
       )}
 
       {supported && <>
+      {/* Round 51: 模式切换 tab */}
+      <div className="card">
+        <div className="subpage-segmented" role="tablist">
+          <button
+            role="tab"
+            aria-selected={mode === 'chord'}
+            className={mode === 'chord' ? 'active' : ''}
+            onClick={() => {
+              if (phase === 'recording' || phase === 'analyzing') return;
+              setMode('chord');
+              setDuration(20);
+              setResult(null);
+              setMelody(null);
+            }}
+            disabled={phase === 'recording' || phase === 'analyzing'}
+          >🎵 和弦/调性</button>
+          <button
+            role="tab"
+            aria-selected={mode === 'melody'}
+            className={mode === 'melody' ? 'active' : ''}
+            onClick={() => {
+              if (phase === 'recording' || phase === 'analyzing') return;
+              setMode('melody');
+              setDuration(10);
+              setResult(null);
+              setMelody(null);
+            }}
+            disabled={phase === 'recording' || phase === 'analyzing'}
+          >🎼 主旋律</button>
+        </div>
+        {mode === 'melody' && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.6 }}>
+            💡 哼唱单音 / 弹单音旋律效果最佳。带和声/伴奏的歌曲, 算法可能跟错声部.
+          </div>
+        )}
+      </div>
+
       {/* 时长选择 */}
       <div className="card">
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>录音时长</div>
         <div className="subpage-segmented" role="tablist">
-          {DURATION_OPTIONS.map(d => (
+          {(mode === 'melody' ? MELODY_DURATION_OPTIONS : DURATION_OPTIONS).map(d => (
             <button
               key={d}
               role="tab"
@@ -368,12 +430,16 @@ export default function ListenPage() {
         </div>
       )}
 
-      {result && phase === 'done' && (
+      {/* Round 51: 结果按 mode 分支显示 */}
+      {phase === 'done' && mode === 'chord' && result && (
         <>
           <ResultHeader result={result} />
           <ChordTimeline beatChords={result.beatChords} totalDuration={recordedSec} />
           {summary && <ChordSummaryCard summary={summary} />}
         </>
+      )}
+      {phase === 'done' && mode === 'melody' && melody && (
+        <MelodyTimeline track={melody} />
       )}
 
       <div className="card">

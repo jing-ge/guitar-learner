@@ -456,3 +456,52 @@ export async function extractPitch(
     try { spectrum?.spectrum?.delete?.(); } catch {}
   }
 }
+
+// ============ Round 51: 主旋律扒带 (PitchMelodia) ============
+
+import {
+  postprocessMelody, getMelodyMidiRange,
+  type MelodyNote, type MelodyTrack,
+} from './melodyPostprocess';
+
+export type { MelodyNote, MelodyTrack };
+
+/**
+ * 从录音中提取主旋律音高轨
+ *
+ * 算法链路:
+ *   1. Essentia.PitchMelodia(audio) → 每 ~2.9ms 一帧 Hz + confidence
+ *   2. postprocessMelody → 中值滤波 + 量化 MIDI + 合并相邻 + 短段过滤 → 音符段数组
+ *   3. 计算音高范围用于 UI fit
+ *
+ * MVP 场景假设 (oracle PRD): 清唱 / 哼唱 / 单音吉他独奏 效果最佳
+ * 带和弦伴奏的流行歌主旋律 PitchMelodia 可能跟到 bass, 不保证准确
+ *
+ * 性能 (Node 实测): 15s 音频处理 ~1.7-2.9s, 移动端预估 ~4-7s
+ *
+ * @param audio Float32Array 单声道 44100Hz
+ * @returns MelodyTrack {notes, durationSec, minMidi, maxMidi}
+ */
+export async function extractMelody(audio: Float32Array): Promise<MelodyTrack> {
+  const essentia = await loadEssentia();
+  const audioVec = essentia.arrayToVector(audio);
+  let result: any = null;
+  try {
+    // PitchMelodia 19 个参数全用默认值. 不调 maxFrequency/minFrequency,
+    // 因为不同场景(清唱/伴奏/器乐)合适范围不同, 让算法自适应
+    result = essentia.PitchMelodia(audioVec);
+    const pitchHz = Array.from(essentia.vectorToArray(result.pitch)) as number[];
+    const notes = postprocessMelody(pitchHz);
+    const range = getMelodyMidiRange(notes);
+    return {
+      notes,
+      durationSec: audio.length / 44100,
+      minMidi: range.minMidi,
+      maxMidi: range.maxMidi,
+    };
+  } finally {
+    try { audioVec.delete?.(); } catch {}
+    try { result?.pitch?.delete?.(); } catch {}
+    try { result?.pitchConfidence?.delete?.(); } catch {}
+  }
+}
