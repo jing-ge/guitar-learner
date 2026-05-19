@@ -16,9 +16,13 @@ const NOTE_LABEL_WIDTH = 28; // Y 轴 MIDI 标签宽
 
 interface Props {
   track: MelodyTrack;
+  /** Round 52: 当前播放秒数 (用于高亮当前音符 + 游标) */
+  currentSec?: number;
+  /** Round 52: 点击音符时回调, 用于 seek */
+  onSeek?: (sec: number) => void;
 }
 
-export default function MelodyTimeline({ track }: Props) {
+export default function MelodyTimeline({ track, currentSec, onSeek }: Props) {
   const { notes, durationSec, minMidi, maxMidi } = track;
 
   if (notes.length === 0) {
@@ -135,8 +139,15 @@ export default function MelodyTimeline({ track }: Props) {
             const y = yOfMidi(n.midi) - semitoneHeight / 2 + 1;
             const h = Math.max(6, semitoneHeight - 2);
             const showLabel = w >= 18 || i === 0; // 太窄不显示标签
+            // Round 52: 当前播放是否在此音符内
+            const isActive = currentSec !== undefined &&
+              currentSec >= n.startSec && currentSec < (n.startSec + n.durSec);
             return (
-              <g key={i}>
+              <g
+                key={i}
+                onClick={onSeek ? () => onSeek(n.startSec) : undefined}
+                style={{ cursor: onSeek ? 'pointer' : 'default' }}
+              >
                 <rect
                   x={x}
                   y={y}
@@ -144,7 +155,9 @@ export default function MelodyTimeline({ track }: Props) {
                   height={h}
                   rx={Math.min(3, h / 2)}
                   fill={pcColor(n.midi)}
-                  opacity={0.9}
+                  opacity={isActive ? 1 : 0.85}
+                  stroke={isActive ? '#fff' : 'none'}
+                  strokeWidth={isActive ? 2 : 0}
                 />
                 {showLabel && (
                   <text
@@ -162,6 +175,20 @@ export default function MelodyTimeline({ track }: Props) {
               </g>
             );
           })}
+
+          {/* Round 52: 时间游标 */}
+          {currentSec !== undefined && currentSec >= 0 && currentSec <= totalSec && (
+            <line
+              x1={xOfSec(currentSec)}
+              y1={0}
+              x2={xOfSec(currentSec)}
+              y2={noteAreaHeight}
+              stroke="var(--text-strong)"
+              strokeWidth={1.5}
+              opacity={0.7}
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
         </svg>
       </div>
 

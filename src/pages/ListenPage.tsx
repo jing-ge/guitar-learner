@@ -13,10 +13,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MicPermissionState, { type MicPermState } from '../components/MicPermissionState';
 import ChordSummaryCard, { summarizeChords, parseRootPc } from '../components/ChordSummaryCard';
 import MelodyTimeline from '../components/MelodyTimeline';
+import PlaybackControls from '../components/PlaybackControls';
 import {
   analyzeRecording, warmupEngine, isEngineReady, extractMelody,
   type AnalysisResult, type BeatChord, type MelodyTrack,
 } from '../audio/essentia-engine';
+import { useAudioPlayback } from '../audio/useAudioPlayback';
 import { vibrate } from '../utils/haptic';
 import { recordSession } from '../utils/progress';
 
@@ -77,6 +79,9 @@ export default function ListenPage() {
   const [engineReady, setEngineReady] = useState(isEngineReady());
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [melody, setMelody] = useState<MelodyTrack | null>(null);
+  // Round 52: 保留录音 blob 用于回放
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const playback = useAudioPlayback(audioBlob);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -134,6 +139,7 @@ export default function ListenPage() {
     setErrorMsg('');
     setResult(null);
     setMelody(null);
+    setAudioBlob(null);  // Round 52: 开始新录音时清空旧 blob
     setWaveform([]);
     setRecordedSec(0);
     setLevel(0);
@@ -209,6 +215,8 @@ export default function ListenPage() {
       streamRef.current = null;
 
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+      // Round 52: 保存 blob 用于回放
+      setAudioBlob(blob);
       try {
         setPhase('analyzing');
         // 用 44100 Hz 的 AudioContext 做解码，让浏览器底层 C++ 做高质量重采样
@@ -275,6 +283,7 @@ export default function ListenPage() {
     setPhase('idle');
     setResult(null);
     setMelody(null);
+    setAudioBlob(null);  // Round 52: reset 清空回放 blob
     setErrorMsg('');
     setRecordedSec(0);
     setWaveform([]);
@@ -333,6 +342,7 @@ export default function ListenPage() {
               setDuration(20);
               setResult(null);
               setMelody(null);
+              setAudioBlob(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
           >🎵 和弦/调性</button>
@@ -346,6 +356,7 @@ export default function ListenPage() {
               setDuration(10);
               setResult(null);
               setMelody(null);
+              setAudioBlob(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
           >🎼 主旋律</button>
@@ -430,16 +441,28 @@ export default function ListenPage() {
         </div>
       )}
 
-      {/* Round 51: 结果按 mode 分支显示 */}
+      {/* Round 51/52: 结果按 mode 分支显示 + 回放控件 */}
+      {phase === 'done' && audioBlob && (
+        <PlaybackControls playback={playback} />
+      )}
       {phase === 'done' && mode === 'chord' && result && (
         <>
           <ResultHeader result={result} />
-          <ChordTimeline beatChords={result.beatChords} totalDuration={recordedSec} />
+          <ChordTimeline
+            beatChords={result.beatChords}
+            totalDuration={recordedSec}
+            currentSec={playback.currentSec}
+            onSeek={playback.seek}
+          />
           {summary && <ChordSummaryCard summary={summary} />}
         </>
       )}
       {phase === 'done' && mode === 'melody' && melody && (
-        <MelodyTimeline track={melody} />
+        <MelodyTimeline
+          track={melody}
+          currentSec={playback.currentSec}
+          onSeek={playback.seek}
+        />
       )}
 
       <div className="card">
@@ -567,7 +590,14 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 
 /* =================== 子组件：和弦时间线 =================== */
 
-function ChordTimeline({ beatChords, totalDuration }: { beatChords: BeatChord[]; totalDuration: number }) {
+function ChordTimeline({ beatChords, totalDuration, currentSec, onSeek }: {
+  beatChords: BeatChord[];
+  totalDuration: number;
+  /** Round 52: 当前播放秒数 (用于高亮当前块 + 游标) */
+  currentSec?: number;
+  /** Round 52: 点击和弦块时回调, 用于 seek */
+  onSeek?: (sec: number) => void;
+}) {
   if (beatChords.length === 0) {
     return (
       <div className="card">
@@ -617,19 +647,25 @@ function ChordTimeline({ beatChords, totalDuration }: { beatChords: BeatChord[];
             const isUnknown = bc.chord === 'N' || !bc.chord;
             const bg = isUnknown ? 'var(--bg-elev-2, rgba(0,0,0,0.05))' :
                       isMinor ? 'var(--info, #3b82f6)' : 'var(--brand)';
+            // Round 52: 检查当前播放是否在此和弦块内
+            const isActive = currentSec !== undefined && currentSec >= bc.startSec && currentSec < bc.endSec;
             return (
               <div
                 key={i}
+                onClick={() => onSeek?.(bc.startSec)}
                 style={{
                   width: `${widthPct}%`,
                   background: bg,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#fff', fontSize: 13, fontWeight: 700,
                   borderRight: i < beatChords.length - 1 ? '1px solid rgba(255,255,255,0.15)' : 'none',
-                  cursor: 'default',
+                  cursor: onSeek ? 'pointer' : 'default',
                   opacity: bc.strength > 0.3 ? 1 : 0.5,
                   // Round 48: snap 过的段加虚线下划线，让用户看到哪些是经过 key-aware 纠正的
                   borderBottom: bc.snapped ? '2px dashed rgba(255,255,255,0.5)' : 'none',
+                  // Round 52: 当前播放块高亮 — 内阴影 + 缩放微弱
+                  boxShadow: isActive ? 'inset 0 0 0 3px rgba(255,255,255,0.6)' : 'none',
+                  transition: 'box-shadow 0.1s',
                 }}
                 title={
                   bc.snapped
@@ -641,6 +677,19 @@ function ChordTimeline({ beatChords, totalDuration }: { beatChords: BeatChord[];
               </div>
             );
           })}
+          {/* Round 52: 时间游标 (跨整个和弦条) */}
+          {currentSec !== undefined && currentSec >= 0 && currentSec <= total && (
+            <div style={{
+              position: 'absolute',
+              left: `${(currentSec / total) * 100}%`,
+              top: 0, bottom: 0,
+              width: 2,
+              background: 'rgba(255,255,255,0.85)',
+              boxShadow: '0 0 4px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+              transform: 'translateX(-1px)',
+            }} />
+          )}
         </div>
 
         {/* 完整序列文本（小屏可读） */}

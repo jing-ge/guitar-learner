@@ -2579,3 +2579,76 @@ PitchMelodia 输出 (Hz/frame) → postprocessMelody:
 4. 录音播放回放 + 时间游标
 
 
+#### Round 52 _2026-05-19_: 录音回放 + 识别同步 (双 tab + seek)
+
+**用户需求**: "做实时和弦识别这个方向怎么样, 或者录音的识别和弦可以回放"
+
+**Oracle 双方向评估**:
+- ❌ **A 实时识别**: 退回 Round 46 之前的流式路线
+  · Essentia 整段 API 不可流式喂帧, 自写管线 = 重新踩自研引擎所有坑
+  · 调性识别本需 10-20s chroma 积累, "实时"语义存在矛盾
+  · 实际上是回退 Round 47 工程整顿成果
+- ✅ **B 录音回放**: 撤回上轮"跨页 AudioBuffer 复杂"误判
+  · ListenPage 内部生命周期, 实际工作量 ~400 行
+  · 数据已经有 (beatChords + melody.notes 都带 startSec)
+  · 加播放控件 + 游标同步 + seek, 立刻闭环 "听 + 看 + 跟弹"
+
+**主线锁定**: B 录音回放 (双 tab 都加 + 含 seek)
+
+**实施 (~410 行新代码 + ~80 行现有改动)**:
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `src/audio/useAudioPlayback.ts` | +140 | React hook 包装 HTML5 <audio> + RAF 驱动 currentSec |
+| `src/components/PlaybackControls.tsx` | +110 | 大圆播放按钮 + 进度条 + 时间显示 + click/touch seek |
+| `src/components/MelodyTimeline.tsx` | +25 | 加 currentSec + onSeek props; 当前音符 stroke 高亮 + 时间游标 line; 点击音符 seek |
+| `src/pages/ListenPage.tsx` (内含 ChordTimeline) | +60 | audioBlob state + useAudioPlayback hook + done 阶段渲染 PlaybackControls; ChordTimeline 加 currentSec + onSeek, 当前块 boxShadow inset 高亮 + 游标 div |
+
+**关键技术决策**:
+- 用 HTML5 `<audio>` 元素而不是 AudioBufferSourceNode (自带可恢复 pause + 浏览器原生 buffering)
+- blob URL (URL.createObjectURL) + revokeObjectURL 防内存泄漏
+- webm/opus Infinity duration hack: seek 1e9 触发实际 duration 矫正 (Chromium 已知 bug)
+- 双 tab 共享同一 useAudioPlayback hook + PlaybackControls 组件, 边际成本极低
+- 点击和弦块/音符 → seek 不自动 play (用户需手动点播放, 避免误触)
+
+**Oracle 撤回另一个上轮建议**: 节奏评分回授剔除 ±20ms drop
+- 矛盾: ±20ms 正是评分 "hit" 阈值, 剔除会把用户准确扫弦也删掉
+- 真实回授特征: expected beat ±2-5ms 系统性出现, 但用户没真机测过, 全是脑补
+- → Karpathy 规则四: 没可验证目标不动手. 留给真机数据驱动
+
+**Oracle 实施后审计 → 2 个上线前快速修复**:
+- ✅ #1 play 后立即 setPlaying(true) 不等 promise (避免首帧 200ms 延迟)
+- ✅ #4 进度条 onTouchMove 支持手机拖拽 seek (+1 行)
+- ⏸ 留 backlog: 切 mode 不清当前 mode 结果 / Android webm 兜底超时保护 / RAF 高频 setState 优化
+
+**用户体验闭环**:
+```
+录音 → 离线分析 → 看到识别结果 → 点 ▶ 播放
+                                 ↓
+              时间游标在 ChordTimeline / MelodyTimeline 上滑动
+                                 ↓
+              当前和弦/音符高亮 + 显示当前位置
+                                 ↓
+              点任意和弦块/音符 → seek 跳过去重听
+                                 ↓
+              用户能反复"听 + 看 + 跟弹"
+```
+
+**Karpathy 自检**:
+- ✅ Surgical: 2 个新文件 + 2 处现有改动, Round 47-51 算法层一行不动
+- ✅ YAGNI: 砍掉了实时识别 (A 方向, 反向工程) / 倍速播放 / A-B loop / 循环段 / 音频导出 / 回授剔除 (D 不做等真机)
+- ✅ Goal-driven: tsc + 2 道防护通过, oracle 冷审 + 2 个 fix 落地, 把握高
+- ✅ 双 tab 共享 hook + 组件, 不为 melody 单独再开一轮
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build: HTML 484 KB (Round 51 462 KB, +22KB), 两道防护通过
+- 不打 APK, 等用户指令
+
+**Round 53 候选方向 (待用户决定)**:
+1. 主旋律 → 指板按法推荐 (Round 51/52 backlog, 最闭环的下一步)
+2. 切 mode 不清当前 mode 结果 (Round 52 oracle backlog 体验小修)
+3. PWA / APK 真机验证 Round 52 回放体验
+4. 节奏评分回授剔除真机数据驱动决策
+
+
