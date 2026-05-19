@@ -15,6 +15,7 @@ import {
 import {
   CHORD_PROGRESSIONS, loadCustomProgressions, saveCustomProgressions,
   createEmptyProgression, cloneProgression, chordDisplayName,
+  chordToDegree, degreeToChordId,
   type ChordProgression, type CustomChordProgression,
 } from '../audio/chord-progressions';
 import {
@@ -569,6 +570,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
   const [playing, setPlaying] = useState(false);
   const [curIdx, setCurIdx] = useState(-1);
   const [bpm, setBpm] = useState(90);
+  const [addMode, setAddMode] = useState<'name' | 'degree'>('name');
 
   const playStartTsRef = useRef(0);
   const playingRef = useRef(playing);
@@ -660,41 +662,85 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
             <span style={{ fontSize: 12, fontWeight: 600, minWidth: 32 }}>{bpm}</span>
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>点击选择和弦，支持拖拽排序</div>
-          
-          {/* 和弦类型分组选择器 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-            {/* 基础和弦：大三、小三 */}
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>大三/小三:</span>
-              {['C','D','E','F','G','A','B'].map(root => (
-                <div key={root} style={{ display: 'flex', gap: 2 }}>
-                  <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px', minWidth: 26 }} onClick={() => updateEditing({ chords: [...editing.chords, root] })}>{root}</button>
-                  <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px', minWidth: 26 }} onClick={() => updateEditing({ chords: [...editing.chords, root + 'm'] })}>{root}m</button>
-                </div>
-              ))}
-            </div>
-            {/* 七和弦 */}
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>七和弦:</span>
-              {['C7','D7','E7','F7','G7','A7','B7','Am7','Dm7','Em7','Cmaj7','Gmaj7','Amaj7','Dmaj7','Fmaj7'].map(ch => (
-                <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
-              ))}
-            </div>
-            {/* 挂留、减、增和弦 */}
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>挂留/减/增:</span>
-              {['Dsus2','Dsus4','Asus2','Asus4','Esus4','Csus2','Csus4','Gsus4','Adim','Bdim','Caug','Aaug'].map(ch => (
-                <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
-              ))}
-            </div>
+          {/* Round 65: 首调 + 调式 (用于级数显示) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: 'var(--bg-soft)', borderRadius: 6 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>首调</span>
+            <select className="select" style={{ fontSize: 12, padding: '2px 6px' }} value={editing.key ?? 'C'} onChange={e => updateEditing({ key: e.target.value })}>
+              {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <select className="select" style={{ fontSize: 12, padding: '2px 6px' }} value={editing.mode ?? 'major'} onChange={e => updateEditing({ mode: e.target.value as 'major'|'minor' })}>
+              <option value="major">大调</option>
+              <option value="minor">小调</option>
+            </select>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }}>选 {editing.key ?? 'C'} {editing.mode === 'minor' ? '小调' : '大调'} → 自动算级数</span>
           </div>
-          
+
+          {/* 添加模式 tab: 音名 / 级数 */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <button className={'chip' + (addMode === 'name' ? ' active' : '')} onClick={() => setAddMode('name')} style={{ fontSize: 11 }}>🎵 按音名编</button>
+            <button className={'chip' + (addMode === 'degree' ? ' active' : '')} onClick={() => setAddMode('degree')} style={{ fontSize: 11 }}>🔢 按级数编</button>
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
+              {addMode === 'name' ? '点击下面具体和弦' : '点击级数自动落 ' + (editing.key ?? 'C') + ' ' + (editing.mode === 'minor' ? '小' : '大') + '调的对应和弦'}
+            </span>
+          </div>
+
+          {/* 添加按钮 */}
+          {addMode === 'name' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+              {/* 基础和弦：大三、小三 */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>大三/小三:</span>
+                {['C','D','E','F','G','A','B'].map(root => (
+                  <div key={root} style={{ display: 'flex', gap: 2 }}>
+                    <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px', minWidth: 26 }} onClick={() => updateEditing({ chords: [...editing.chords, root] })}>{root}</button>
+                    <button className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px', minWidth: 26 }} onClick={() => updateEditing({ chords: [...editing.chords, root + 'm'] })}>{root}m</button>
+                  </div>
+                ))}
+              </div>
+              {/* 七和弦 */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>七和弦:</span>
+                {['C7','D7','E7','F7','G7','A7','B7','Am7','Dm7','Em7','Cmaj7','Gmaj7','Amaj7','Dmaj7','Fmaj7'].map(ch => (
+                  <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
+                ))}
+              </div>
+              {/* 挂留、减、增和弦 */}
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', width: 60 }}>挂留/减/增:</span>
+                {['Dsus2','Dsus4','Asus2','Asus4','Esus4','Csus2','Csus4','Gsus4','Adim','Bdim','Caug','Aaug'].map(ch => (
+                  <button key={ch} className="btn btn-sm" style={{ fontSize: 10, padding: '2px 5px' }} onClick={() => updateEditing({ chords: [...editing.chords, ch] })}>{ch}</button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+              {(editing.mode === 'minor'
+                ? ['i', 'ii°', 'III', 'iv', 'v', 'VI', 'VII']
+                : ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°']
+              ).map(deg => {
+                const concreteId = degreeToChordId(deg, editing.key ?? 'C', editing.mode ?? 'major');
+                const disabled = !concreteId;
+                return (
+                  <button key={deg} className="btn btn-sm" disabled={disabled}
+                    style={{ fontSize: 11, padding: '4px 8px', opacity: disabled ? 0.4 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48 }}
+                    title={disabled ? '当前调下该级数无可用和弦' : `加入 ${concreteId}`}
+                    onClick={() => updateEditing({ chords: [...editing.chords, concreteId] })}>
+                    <span style={{ fontWeight: 700 }}>{deg}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{concreteId || '—'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>点击单元切换同根和弦; ✕ 删除该和弦</div>
+
           {/* 当前和弦序列 */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '10px 8px', background: 'var(--bg-soft)', borderRadius: 6, minHeight: 50 }}>
             {editing.chords.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>点击上方添加和弦...</div>}
             {editing.chords.map((ch, i) => {
               const chordDef = CHORDS.find(c => c.id === ch);
+              const deg = chordToDegree(ch, editing.key, editing.mode);
               return (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 10px', background: curIdx === i ? 'var(--brand)' : 'var(--bg)', borderRadius: 6, border: '1px solid var(--line-soft)', cursor: 'pointer', transition: 'all 0.15s' }}
                   onClick={() => {
@@ -703,6 +749,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
                     const c = [...editing.chords]; c[i] = next; updateEditing({ chords: c });
                   }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: curIdx === i ? '#fff' : 'var(--text-strong)' }}>{chordDisplayName(ch)}</div>
+                  {deg && <div style={{ fontSize: 10, fontWeight: 600, color: curIdx === i ? 'rgba(255,255,255,0.85)' : 'var(--brand)', marginTop: 1 }}>{deg}</div>}
                   <div style={{ fontSize: 9, color: curIdx === i ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>{chordDef?.category ?? ''}</div>
                   {editing.chords.length > 1 && (
                     <button
@@ -718,7 +765,16 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
             })}
           </div>
           <div style={{ marginTop: 8, fontSize: 13, color: 'var(--brand)', fontWeight: 600, textAlign: 'center' }}>
-            {editing.chords.length > 0 && `预览：${editing.chords.map(chordDisplayName).join(' → ')}`}
+            {editing.chords.length > 0 && (
+              <>
+                <div>预览：{editing.chords.map(chordDisplayName).join(' → ')}</div>
+                {editing.key && (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginTop: 2 }}>
+                    级数：{editing.chords.map(c => chordToDegree(c, editing.key, editing.mode) || '?').join(' - ')}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

@@ -12,6 +12,11 @@
     "orientation": "portrait",
     "scheme": "guitarlearner",
     "userInterfaceStyle": "automatic",
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0f1419",
+      "translucent": false
+    },
     "android": {
       "package": "com.you.guitarlearner",
       "backgroundColor": "#0f1419",
