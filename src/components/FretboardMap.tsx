@@ -16,9 +16,12 @@
  *     · 范围外音符列表 (如有)
  *     · 警告文案 "按法基于上方主旋律识别. 若识别有误, 按法也会错."
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { MelodyNote } from '../audio/melodyPostprocess';
-import { getUniquePositions } from '../audio/melodyToFretboard';
+import {
+  getUniquePositionsByStrategy, pickAutoFretRange,
+  FIXED_FRET_RANGES, type FretboardStrategy,
+} from '../audio/melodyToFretboard';
 
 // 吉他风格 (与 Fretboard.tsx 对齐)
 const FRET_LEN = 42;
@@ -38,9 +41,25 @@ interface Props {
 }
 
 export default function FretboardMap({ notes, currentSec }: Props) {
-  const { positions, outOfRange } = useMemo(
-    () => getUniquePositions(notes),
+  // Round 56: 策略切换 state (内部, 不上抬, 切 mode 时随组件卸载自动清理)
+  const [strategy, setStrategy] = useState<FretboardStrategy>('lowest');
+  // 'auto' 字符串 表示自动选最优把位, 否则是 [from, to] 元组
+  const [fixedRangeMode, setFixedRangeMode] = useState<'auto' | number>('auto');
+
+  // 自动把位 (仅当 strategy='fixed' 且 fixedRangeMode='auto' 时生效)
+  const autoRange = useMemo(
+    () => pickAutoFretRange(notes),
     [notes],
+  );
+
+  const activeRange: readonly [number, number] | undefined =
+    strategy === 'fixed'
+      ? (fixedRangeMode === 'auto' ? autoRange : FIXED_FRET_RANGES[fixedRangeMode])
+      : undefined;
+
+  const { positions, outOfRange, fallbackKeys } = useMemo(
+    () => getUniquePositionsByStrategy(notes, strategy, activeRange),
+    [notes, strategy, activeRange],
   );
 
   if (notes.length === 0) return null;
@@ -87,8 +106,53 @@ export default function FretboardMap({ notes, currentSec }: Props) {
         </div>
       </div>
 
+      {/* Round 56: 策略切换 segmented */}
+      <div className="subpage-segmented" role="tablist" style={{ marginBottom: 6 }}>
+        <button
+          role="tab"
+          aria-selected={strategy === 'lowest'}
+          className={strategy === 'lowest' ? 'active' : ''}
+          onClick={() => setStrategy('lowest')}
+        >最低把位</button>
+        <button
+          role="tab"
+          aria-selected={strategy === 'fixed'}
+          className={strategy === 'fixed' ? 'active' : ''}
+          onClick={() => setStrategy('fixed')}
+        >固定把位</button>
+        <button
+          role="tab"
+          aria-selected={strategy === 'least'}
+          className={strategy === 'least' ? 'active' : ''}
+          onClick={() => setStrategy('least')}
+        >最少移动</button>
+      </div>
+
+      {/* 选 fixed 时下方再加把位选择 */}
+      {strategy === 'fixed' && (
+        <div className="subpage-segmented" role="tablist" style={{ marginBottom: 6 }}>
+          <button
+            role="tab"
+            aria-selected={fixedRangeMode === 'auto'}
+            className={fixedRangeMode === 'auto' ? 'active' : ''}
+            onClick={() => setFixedRangeMode('auto')}
+          >自动</button>
+          {FIXED_FRET_RANGES.map((r, idx) => (
+            <button
+              key={idx}
+              role="tab"
+              aria-selected={fixedRangeMode === idx}
+              className={fixedRangeMode === idx ? 'active' : ''}
+              onClick={() => setFixedRangeMode(idx)}
+            >{r[0]}-{r[1]} 品</button>
+          ))}
+        </div>
+      )}
+
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.5 }}>
-        策略：最低把位 — 每个音都用最靠近 1 品的位置, 适合初学
+        {strategy === 'lowest' && '最低把位 — 每个音用最靠近 1 品的位置, 适合初学'}
+        {strategy === 'fixed' && activeRange && `固定把位 ${activeRange[0]}-${activeRange[1]} 品${fixedRangeMode === 'auto' ? ' (自动选最优)' : ''} — 同把位练习, 超范围音用最低把位兜底 (虚线圆点)`}
+        {strategy === 'least' && '最少手指移动 — 贪心算法, 后续音选距上音最近位置, 适合实战'}
       </div>
 
       {/* 指板 SVG */}
@@ -190,6 +254,8 @@ export default function FretboardMap({ notes, currentSec }: Props) {
             const idxLabel = p.noteIndexes.slice(0, 3).join(',') + (p.noteIndexes.length > 3 ? '+' : '');
             // Round 54: 当前播放的 note 是否落在此位置 (noteIndexes 是 1-based 序号)
             const isActive = activeNoteIndex > 0 && p.noteIndexes.includes(activeNoteIndex);
+            // Round 56: 此位置在策略 b 时是否为兜底音 (超出选定把位范围, 用最低把位补)
+            const isFallback = fallbackKeys.has(`${p.position.stringNum}-${p.position.fret}`);
             return (
               <g key={i}>
                 <circle
@@ -198,6 +264,7 @@ export default function FretboardMap({ notes, currentSec }: Props) {
                   fill={isActive ? 'var(--accent-cyan, #06b6d4)' : 'var(--brand)'}
                   stroke="#fff"
                   strokeWidth={isActive ? 3 : 1.5}
+                  strokeDasharray={isFallback ? '3,2' : undefined}
                   style={{ transition: 'all 0.1s' }}
                 />
                 <text

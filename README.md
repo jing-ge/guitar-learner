@@ -2867,3 +2867,34 @@ A5:
 - A2 b/c 弹法策略 (固定 position 或最少手指移动), +1.5pp → 86%
 
 
+#### Round 56 _2026-05-19_: A2 弹法策略 — b 固定把位 + c 最少手指移动
+
+**路线 1 第 3/5 轮 (84.5% → 86%, +1.5pp)**
+
+R53 只做了策略 a (最低把位). R56 加 b/c, 让用户按需切换:
+- **a 最低把位**: 初学者, 每个音用最靠近 1 品的位置
+- **b 固定把位**: CAGED 学习者, 选 1-4/4-7/7-10/10-12 之一, 同把位练习
+- **c 最少手指移动**: 进阶/实战, 贪心 Manhattan 距离
+
+**改动 (~140 行)**:
+- `melodyToFretboard.ts` +95 行: 5 个新函数 (midiToFixedPosition / mapMelodyFixed / mapMelodyLeastMovement / pickAutoFretRange / getUniquePositionsByStrategy)
+- `FretboardMap.tsx` +50 行: 顶部策略 segmented + 选 fixed 时第二行把位 + fallback dashed stroke
+
+**核心算法**:
+- b 固定把位 + a 兜底 (超范围音用最低把位补, marker 加虚线边框)
+- c Manhattan 贪心: prev=null 起首音 lowest, 后续 argmin |stringDiff|+|fretDiff|
+- auto: FIXED_FRET_RANGES 中选覆盖最多音的把位
+
+**单元测试 6 全过**:
+- b 固定 + 兜底 / b 全超范围 / auto 选最优 / c [E4,B4,E4] 关键判定 (E4 后选 2弦5 而非 1弦0) / c [C5,A4] / b fallback 真测
+
+**Karpathy 砍掉**: 第 4 策略 / 5+ 把位选项 / localStorage 持久化 / Manhattan 精细化 / 动画
+
+**测试**: tsc + PWA build (473.5 KB +2.6KB), 6 单元测试全过, R54 currentSec 联动不破, R47-55 不回归
+
+**完成度更新**: 84.5% → **86%** (路线 1 第 3/5 轮)
+
+**Round 57 候选 (路线 1 下一项)**:
+- B1 多和弦走向训练 (听 2 个和弦判断 I→V / I→IV / vi→IV 等), +1.5pp → 87.5%
+
+

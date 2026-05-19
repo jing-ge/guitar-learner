@@ -125,3 +125,188 @@ export function getUniquePositions(
 // 编译期 sanity check: fretToMidi 与本文件 OPEN_STRING_MIDIS 一致
 // (运行时验证, 防 theory/notes 改了调弦定义但本文件未跟进)
 void fretToMidi;  // 引用以避免未使用警告
+
+// ============ Round 56: 弹法策略 b (固定把位) + c (最少手指移动) ============
+
+export type FretboardStrategy = 'lowest' | 'fixed' | 'least';
+
+/** 固定把位选项: 4 个不重叠的区域 */
+export const FIXED_FRET_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [1, 4], [4, 7], [7, 10], [10, 12],
+];
+
+/** 给定 MIDI, 列出所有可弹位置 (fret 0-12 之内) */
+function midiToAllPositions(midi: number): FretboardPosition[] {
+  const out: FretboardPosition[] = [];
+  for (const stringNum of STRINGS) {
+    const openMidi = OPEN_STRING_MIDIS[6 - stringNum];
+    const fret = midi - openMidi;
+    if (fret >= 0 && fret <= MAX_FRET) {
+      out.push({ stringNum, fret });
+    }
+  }
+  return out;
+}
+
+/** 策略 b: 在指定 fret 范围内找位置, 同 fret 选低音弦 */
+export function midiToFixedPosition(
+  midi: number,
+  fromFret: number,
+  toFret: number,
+): FretboardPosition | null {
+  const cands = midiToAllPositions(midi).filter(
+    p => p.fret >= fromFret && p.fret <= toFret,
+  );
+  if (cands.length === 0) return null;
+  cands.sort((a, b) => {
+    if (a.fret !== b.fret) return a.fret - b.fret;
+    return b.stringNum - a.stringNum;
+  });
+  return cands[0];
+}
+
+/**
+ * 自动选最优把位: 在 FIXED_FRET_RANGES 中选覆盖最多音的把位
+ * 覆盖 = 该 MIDI 在该范围内能弹出来 (无需 fallback)
+ * 平局取最低范围 (最易按)
+ */
+export function pickAutoFretRange(
+  notes: Array<{ midi: number }>,
+): readonly [number, number] {
+  let best = FIXED_FRET_RANGES[0];
+  let bestCount = -1;
+  for (const range of FIXED_FRET_RANGES) {
+    const count = notes.filter(
+      n => midiToFixedPosition(n.midi, range[0], range[1]) !== null,
+    ).length;
+    if (count > bestCount) {
+      bestCount = count;
+      best = range;
+    }
+  }
+  return best;
+}
+
+/** Manhattan 距离 (string_diff + fret_diff) — 吉他指型移动 1 阶近似 */
+function manhattanDistance(a: FretboardPosition, b: FretboardPosition): number {
+  return Math.abs(a.stringNum - b.stringNum) + Math.abs(a.fret - b.fret);
+}
+
+export interface MappedPosition {
+  position: FretboardPosition | null;
+  midi: number;
+  noteName: string;
+  /** Round 56: 策略 b 时, 此音超出指定把位范围, 已用最低把位兜底 */
+  fallback?: boolean;
+}
+
+/** 策略 b 主入口: 固定把位, 范围外用最低把位兜底 */
+export function mapMelodyFixed(
+  notes: Array<{ midi: number; noteName: string }>,
+  fromFret: number,
+  toFret: number,
+): MappedPosition[] {
+  return notes.map(n => {
+    const inRange = midiToFixedPosition(n.midi, fromFret, toFret);
+    if (inRange) {
+      return { position: inRange, midi: n.midi, noteName: n.noteName };
+    }
+    const fallback = midiToLowestPosition(n.midi);
+    return {
+      position: fallback,
+      midi: n.midi,
+      noteName: n.noteName,
+      fallback: fallback !== null,
+    };
+  });
+}
+
+/** 策略 c 主入口: 最少手指移动 (贪心 Manhattan), 首音用最低把位 */
+export function mapMelodyLeastMovement(
+  notes: Array<{ midi: number; noteName: string }>,
+): MappedPosition[] {
+  let prev: FretboardPosition | null = null;
+  return notes.map((n, i) => {
+    const cands = midiToAllPositions(n.midi);
+    if (cands.length === 0) {
+      return { position: null, midi: n.midi, noteName: n.noteName };
+    }
+    if (i === 0 || !prev) {
+      // 首音: 用最低把位作起点
+      const start = midiToLowestPosition(n.midi);
+      prev = start;
+      return { position: start, midi: n.midi, noteName: n.noteName };
+    }
+    // 后续音: 选距 prev 最近的位置 (Manhattan 最小)
+    let best = cands[0];
+    let bestDist = manhattanDistance(prev, cands[0]);
+    for (let k = 1; k < cands.length; k++) {
+      const d = manhattanDistance(prev, cands[k]);
+      if (d < bestDist) {
+        best = cands[k];
+        bestDist = d;
+      }
+    }
+    prev = best;
+    return { position: best, midi: n.midi, noteName: n.noteName };
+  });
+}
+
+/** 策略 a (复用 R53): 最低把位, 包装成 MappedPosition[] */
+export function mapMelodyLowest(
+  notes: Array<{ midi: number; noteName: string }>,
+): MappedPosition[] {
+  return notes.map(n => ({
+    position: midiToLowestPosition(n.midi),
+    midi: n.midi,
+    noteName: n.noteName,
+  }));
+}
+
+/**
+ * Round 56: 统一入口, 按策略选算法
+ * 返回去重位置 + 出现顺序 (与 R53 getUniquePositions 兼容)
+ */
+export function getUniquePositionsByStrategy(
+  notes: Array<{ midi: number; noteName: string }>,
+  strategy: FretboardStrategy,
+  fixedRange?: readonly [number, number],
+): { positions: UniquePositionStat[]; outOfRange: string[]; fallbackKeys: Set<string> } {
+  let mapped: MappedPosition[];
+  if (strategy === 'fixed' && fixedRange) {
+    mapped = mapMelodyFixed(notes, fixedRange[0], fixedRange[1]);
+  } else if (strategy === 'least') {
+    mapped = mapMelodyLeastMovement(notes);
+  } else {
+    mapped = mapMelodyLowest(notes);
+  }
+
+  const positionMap = new Map<string, UniquePositionStat>();
+  const outOfRange = new Set<string>();
+  const fallbackKeys = new Set<string>();
+
+  mapped.forEach((m, i) => {
+    if (!m.position) {
+      outOfRange.add(m.noteName);
+      return;
+    }
+    const key = `${m.position.stringNum}-${m.position.fret}`;
+    if (m.fallback) fallbackKeys.add(key);
+    const existing = positionMap.get(key);
+    if (existing) {
+      existing.noteIndexes.push(i + 1);
+    } else {
+      positionMap.set(key, {
+        position: m.position,
+        noteName: m.noteName,
+        noteIndexes: [i + 1],
+      });
+    }
+  });
+
+  return {
+    positions: [...positionMap.values()],
+    outOfRange: [...outOfRange],
+    fallbackKeys,
+  };
+}
