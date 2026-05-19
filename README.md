@@ -2898,3 +2898,73 @@ R53 只做了策略 a (最低把位). R56 加 b/c, 让用户按需切换:
 - B1 多和弦走向训练 (听 2 个和弦判断 I→V / I→IV / vi→IV 等), +1.5pp → 87.5%
 
 
+#### Round 57 _2026-05-19_: B1 和弦走向训练 (听 2 和弦 → 4 选 1 罗马数字)
+
+**路线 1 第 4/5 轮 (86% → 87.5%, +1.5pp)**
+
+R49 单和弦听力训练的升级版: 听 2 个和弦序列 → 用户判断走向 (V→I / IV→I / I→V / V→vi / I→IV / vi→V)
+
+**Oracle 决策**:
+- Q1 固定 6 个最经典 2-chord 走向 (砍 I→ii / vi→IV; 4-chord 进行留 R58+)
+- Q2 固定 C 大调 (教"关系听感"非"任意调", 减少认知负担)
+- Q3 高度复用 R49 思路但**不复用代码** (规则三, 不动 R49)
+- Q4 5 题/组 + 最多重听 2 次 (与 R49 一致, 用户已习得)
+- Q5 PracticePage TAB 新 key 'progression-ear'
+
+**改动 (~365 行)**:
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `src/data/chordProgressions.ts` | +99 | PROGRESSION_QUESTIONS 6 走向 + generateProgressionQuestion 4选1 抽题 |
+| `src/components/ProgressionEarTrainer.tsx` | +405 | intro/task/done 三 step + 5 题/组 + 重听机制 + 答错反馈 |
+| `src/pages/PracticePage.tsx` | +3 | TABS 加 'progression-ear', 渲染 ProgressionEarTrainer |
+
+**核心数据 (6 个 2-chord 走向)**:
+| Roman | Nickname | C 大调 | 一句话功能 |
+|------|------|------|------|
+| V→I | 强终止 | G→C | 最稳定的终止感 |
+| IV→I | 变格终止 (Amen) | F→C | 圣歌"阿门"般 |
+| I→V | 半终止 | C→G | 悬而未决 |
+| V→vi | 阻碍终止 | G→Am | 意外去向 |
+| I→IV | 上行延展 | C→F | 主歌起句最常用 |
+| vi→V | 小调上行 | Am→G | 从忧伤到希望 |
+
+**单元测试 (3 全过)**:
+- 题库长度 = 6
+- generateProgressionQuestion: 4 选 1 含答案 + 不重复
+- 600 局采样分布: 每个走向 86-114 次 (均值 100), 合理
+
+**UI 设计**:
+- 进 PracticePage → "和弦走向" tab → 介绍页 → 点开始
+- 题目卡: "听这两个和弦, 在 C 大调中是哪种走向?" + ▶ 重听 (剩 N)
+- 2×2 grid 4 选 1: 上方罗马数字, 下方 nickname
+- 答对 1.2s 自动下一题; 答错显示反馈区 (罗马数字 + nickname + 两和弦构成音 + description) + 手动下一题
+- 完成 5 题 → 得分卡 + 错题回顾 (你选 vs 正确 + 解释)
+
+**播放逻辑**: synth.strum 第一个和弦 → setTimeout 1.2s → synth.strum 第二个和弦
+
+**Karpathy 砍掉**:
+- ❌ 4-chord 进行 (另一认知层级)
+- ❌ 难度分级 / 多调支持 / 小调走向
+- ❌ 分解和弦播放 (R49 有, R57 仅扫弦)
+- ❌ 复用 R49 ChordEarTrainerPage 组件 (规则三)
+- ❌ 抽 useEarTrainerFlow 公共 hook (YAGNI, 没第三个调用点)
+- ❌ 通关徽章 / 历史最佳
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build: HTML 482.5 KB (+9 KB), 两道防护通过
+- 3 单元测试全过
+- R47-56 不回归
+
+**Karpathy 自检**:
+- ✅ Surgical: 2 新文件 + 1 文件 3 行集成, R49 一行不动
+- ✅ Simplicity: 单一难度 + 固定 C 大调 + 2-chord + 骨架拷贝 (砍 7 个扩展点)
+- ✅ Goal-driven: 单元测试覆盖题库 + 抽题 + 分布
+
+**完成度更新**: 86% → **87.5%** (路线 1 第 4/5 轮)
+
+**Round 58 候选 (路线 1 最后一项)**:
+- A3 切 mode 不清当前 mode 结果 + B2 进度统计页增强, +0.5pp → 88% (路线 1 收尾轮)
+
+
