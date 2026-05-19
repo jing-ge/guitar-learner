@@ -27,7 +27,7 @@ import {
 import { vibrate } from '../utils/haptic';
 import { recordSession } from '../utils/progress';
 
-const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+// (Round 64: 删了未使用的 SHARP_NAMES 本地定义)
 
 type Phase = 'idle' | 'requesting' | 'recording' | 'analyzing' | 'done' | 'error';
 

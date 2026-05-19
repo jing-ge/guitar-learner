@@ -18,7 +18,8 @@ import {
 import ChordDiagram from './ChordDiagram';
 import { Card, Badge, ChordChain } from './ui';
 
-const SHARP_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+// Round 64: 用 theory/notes 的 SHARP_NAMES (避免重复定义)
+import { SHARP_NAMES } from '../theory/notes';
 const FLAT_TO_SHARP_LOCAL: Record<string,string> = { Bb:'A#', Db:'C#', Eb:'D#', Gb:'F#', Ab:'G#' };
 
 const ROMAN_MAJOR = ['I', 'bII', 'II', 'bIII', 'III', 'IV', '#IV', 'V', 'bVI', 'VI', 'bVII', 'VII'];
@@ -33,7 +34,7 @@ export function parseRootPc(id: string): number {
     if (!mapped) return -1;
     token = mapped;
   }
-  return SHARP_NAMES_LOCAL.indexOf(token);
+  return (SHARP_NAMES as readonly string[]).indexOf(token);
 }
 
 export function simplifyQuality(q: string): 'M' | 'm' | 'd' | 'aug' | 'other' {

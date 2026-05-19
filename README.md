@@ -3378,3 +3378,53 @@ D. 移动适配 (`global.css` +12 行)
 **Round 64**: 死代码清理 (legacy / 老 eval / 重复 helper)
 
 
+#### Round 64 _2026-05-19_: 死代码清理 (净减 1403 行)
+
+**Explorer 盘点的死代码逐个清理**:
+
+| 文件 | 行数 | 删/留 | 理由 |
+|------|------|------|------|
+| `src/pages/ListenPage.legacy.tsx` | 1126 | **删** | 仅注释提及, 0 import |
+| `scripts/melody-probe.mjs` | 101 | **删** | R51 第 0 任务一次性 probe |
+| `scripts/melody-accuracy-test.mjs` | 161 | **删** | R53 第 0 任务一次性测试 |
+| `ddg_search.py` | 16 | **删** | Python 噪音 (与项目无关) |
+| `essentia.js-0.1.3.tgz` | 2.6MB | **删** | npm registry 装, 物理文件冗余 |
+| `tests/fixtures/` | 0 | **删** | 空目录 |
+| `src/audio/chord-detector.ts` | 800 | **留** | ChordsPage 仍在用 (实时识别页) |
+| `src/audio/pitch-detector.ts` | 200 | **留** | TunerPage / ScalesPage / PitchTrainerPage 都在用 |
+| `scripts/eval-chord-detector.mjs` | 350 | **留** | npm script eval/eval:check 引用 (Karpathy 规则三, 完整套件不动) |
+| `scripts/canon-real-eval.mjs` | 580 | **留** | 历史评测可复跑 |
+| `scripts/song-fixture-eval.mjs` | 287 | **留** | 同上 |
+| `scripts/lib/*.mjs` | 800+ | **留** | 老 eval 依赖 |
+
+**重复 helper 处理**:
+- `SHARP_NAMES_LOCAL` 在 ChordSummaryCard 显性命名 `_LOCAL` 表明已知重复, 改为 import theory/notes
+- ListenPage.tsx 局部 `SHARP_NAMES` 定义但未引用 → 直接删
+- MelodyTimeline / melodyPostprocess 的局部定义保留 (小而局部, 改动收益 < 风险)
+
+**改动统计**:
+```
+6 files changed
+4 insertions(+)
+1407 deletions(-)
+```
+
+**测试**:
+- tsc --noEmit ✓
+- PWA build ✓ HTML 498.7 KB (R63 后 +3 KB minify 波动)
+- 三首 wav 回归: 推荐主调 + 经典走向匹配不变
+- 五个主页面无回归 (home / listen / chord-ear / progression-ear / play)
+
+**Karpathy 自检**:
+- ✅ Surgical: 仅删确认零引用的文件 + 改 2 处显性重复
+- ✅ Karpathy 规则三: 保留完整的 eval 套件 (chord-detector + 4 个 eval 脚本) — 不是孤儿
+- ✅ 不顺手抽 MelodyTimeline / melodyPostprocess 的局部 SHARP_NAMES (小而局部, 不动)
+
+**完成度更新**: 65% → **65%** (清理本身不增加可用度, 仅减维护成本)
+
+**Round 64 副产物**:
+- 仓库总行数 -1403
+- 仓库根目录文件: 删 ddg_search.py / essentia.js-0.1.3.tgz
+- 共享组件 ui/ 待 R65+ 扩展替换其余 5 个组件 inline style
+
+
