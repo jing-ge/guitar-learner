@@ -341,9 +341,8 @@ export default function ListenPage() {
               if (phase === 'recording' || phase === 'analyzing') return;
               setMode('chord');
               setDuration(20);
-              setResult(null);
+              // Round 58 A3: 只清"另一个 mode 的结果", 保留 result/audioBlob 让用户切回时不丢
               setMelody(null);
-              setAudioBlob(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
           >🎵 和弦/调性</button>
@@ -355,9 +354,8 @@ export default function ListenPage() {
               if (phase === 'recording' || phase === 'analyzing') return;
               setMode('melody');
               setDuration(10);
+              // Round 58 A3: 只清"另一个 mode 的结果", 保留 melody/audioBlob
               setResult(null);
-              setMelody(null);
-              setAudioBlob(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
           >🎼 主旋律</button>
@@ -443,7 +441,8 @@ export default function ListenPage() {
       )}
 
       {/* Round 51/52: 结果按 mode 分支显示 + 回放控件 */}
-      {phase === 'done' && audioBlob && (
+      {/* Round 58 A3: PlaybackControls 跟当前 mode 的结果绑定, 切到无结果 mode 时不显示 */}
+      {phase === 'done' && audioBlob && (mode === 'chord' ? !!result : !!melody) && (
         <PlaybackControls playback={playback} />
       )}
       {phase === 'done' && mode === 'chord' && result && (
