@@ -23,6 +23,22 @@
 
 ---
 
+## 📸 界面预览
+
+> 截图为 Web 端 414×896 移动视口、深色主题。截图脚本见 [`scripts/capture-screenshots.mjs`](scripts/capture-screenshots.mjs),UI 改动后可一键重新生成。
+
+| 首页 | 学习 · 和弦库 | 学习 · 五度圈 | 学习 · 指板 |
+|:---:|:---:|:---:|:---:|
+| ![首页](docs/screenshots/01-home.png) | ![和弦库](docs/screenshots/02-learn-chords.png) | ![五度圈](docs/screenshots/03-learn-circle.png) | ![指板](docs/screenshots/04-learn-fretboard.png) |
+| 练习热力图 + 今日推荐 | 48 个和弦 · 指法图 · 难度 | 12 调交互式 SVG | 12 品动态指板 |
+
+| 学习 · 五声 | 练习中心 | 每日 5 分钟 | 伴奏中心 |
+|:---:|:---:|:---:|:---:|
+| ![五声音阶](docs/screenshots/05-learn-penta.png) | ![练习中心](docs/screenshots/06-practice-menu.png) | ![每日套餐](docs/screenshots/07-practice-daily.png) | ![伴奏中心](docs/screenshots/08-play-menu.png) |
+| 大/小/蓝调 · 5 把位 | 3 个入口卡片 | 3 步串行套餐 | 5 模式 + 自定义库 |
+
+---
+
 ## 🧭 功能总览
 
 应用底部分 **4 大主区**,共 16 个 page,**全部内容均可离线使用**。
