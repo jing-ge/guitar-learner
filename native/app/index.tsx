@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View, Platform, BackHandler } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as SystemUI from 'expo-system-ui';
 
@@ -14,6 +15,7 @@ const SOURCE = Platform.OS === 'android'
 
 export default function Index() {
   const webViewRef = useRef<WebView>(null);
+  const insets = useSafeAreaInsets();
 
   // 初始化安卓沉浸式底部导航栏和系统UI
   useEffect(() => {
@@ -43,7 +45,9 @@ export default function Index() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    // Round 65.2: paddingTop = insets.top 让 WebView 从状态栏下方开始
+    // (Android WebView 的 env(safe-area-inset-top) 默认 0, 无法靠 web CSS 解决)
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <WebView
         ref={webViewRef}
         source={SOURCE}
