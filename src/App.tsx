@@ -8,14 +8,15 @@ import PracticeHub from './pages/PracticeHub';
 import PlayHub from './pages/PlayHub';
 import DailySetPage from './pages/DailySetPage';
 import ProgressToast from './components/ProgressToast';
+import { Icon } from './components/Icon';
 
 // 底部 4 大主区导航
 const TABS = [
-  { to: '/home',     icon: '🏠', label: '首页' },
-  { to: '/learn',    icon: '📚', label: '学习' },
-  { to: '/practice', icon: '🎯', label: '练习' },
-  { to: '/play',     icon: '🎼', label: '伴奏' },
-];
+  { to: '/home',     icon: 'home',     label: '首页' },
+  { to: '/learn',    icon: 'learn',    label: '学习' },
+  { to: '/practice', icon: 'practice', label: '练习' },
+  { to: '/play',     icon: 'play',     label: '伴奏' },
+] as const;
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(initTheme);
@@ -40,7 +41,12 @@ export default function App() {
       <a className="skip-link" href="#main-content">跳到主内容</a>
       <header className="app-header">
         <NavLink to="/home" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="brand">🎸 吉他学习</div>
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              <Icon name="play-fill" size={14} />
+            </span>
+            吉他学习
+          </div>
         </NavLink>
         <div className="header-cluster">
           <button
@@ -48,7 +54,7 @@ export default function App() {
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
           </button>
           <div className="brand-sub">离线版</div>
         </div>
@@ -75,7 +81,9 @@ export default function App() {
             to={t.to}
             className={({ isActive }) => 'tab-item' + (isActive ? ' active' : '')}
           >
-            <span className="tab-icon">{t.icon}</span>
+            <span className="tab-icon">
+              <Icon name={t.icon} size={22} strokeWidth={1.9} />
+            </span>
             <span className="tab-label">{t.label}</span>
           </NavLink>
         ))}

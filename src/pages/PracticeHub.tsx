@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import TunerPage from './TunerPage';
 import ListenPage from './ListenPage';
 import PracticePage from './PracticePage';
+import { Icon } from '../components/Icon';
 
 type PracticeTab = 'menu' | 'tuner' | 'listen' | 'general';
 
-const ENTRY_CARDS: { key: Exclude<PracticeTab, 'menu'>; icon: string; label: string; desc: string }[] = [
-  { key: 'tuner', icon: '🎛️', label: '调音器', desc: '先把六根弦调准，今天的练习更顺手。' },
-  { key: 'listen', icon: '🎧', label: '听歌识别', desc: '播放音乐，识别和弦走向与变化。' },
-  { key: 'general', icon: '🎯', label: '综合训练', desc: '进入训练菜单，做听音、节拍和记录。' },
+const ENTRY_CARDS: { key: Exclude<PracticeTab, 'menu'>; icon: 'tuner' | 'headphones' | 'target'; label: string; desc: string }[] = [
+  { key: 'tuner', icon: 'tuner', label: '调音器', desc: '先把六根弦调准，今天的练习更顺手。' },
+  { key: 'listen', icon: 'headphones', label: '听歌识别', desc: '播放音乐，识别和弦走向与变化。' },
+  { key: 'general', icon: 'target', label: '综合训练', desc: '进入训练菜单，做听音、节拍和记录。' },
 ];
 
 export default function PracticeHub() {
@@ -29,11 +30,16 @@ export default function PracticeHub() {
           <div className="practice-entry-list">
             {ENTRY_CARDS.map((entry) => (
               <button key={entry.key} className="module-menu-card practice-entry-card" onClick={() => setTab(entry.key)}>
-                <div>
-                  <div className="menu-card-title">{entry.icon} {entry.label}</div>
+                <div className="entry-card-icon" aria-hidden="true">
+                  <Icon name={entry.icon} size={24} />
+                </div>
+                <div className="entry-card-body">
+                  <div className="menu-card-title">{entry.label}</div>
                   <p>{entry.desc}</p>
                 </div>
-                <span className="menu-card-tag">进入</span>
+                <span className="menu-card-tag">
+                  进入 <Icon name="arrow-right" size={14} strokeWidth={2} style={{ marginLeft: 2 }} />
+                </span>
               </button>
             ))}
           </div>

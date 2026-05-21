@@ -4,23 +4,27 @@ import { getHeatmapDaysWithIntensity, getPracticeSummary, getTodayStats, getTopM
 import { loadSavedProgressions, type SavedProgression } from '../utils/saved-progressions';
 import { CHORDS } from '../theory/chords';
 import ChordDiagram from '../components/ChordDiagram';
+import { Icon } from '../components/Icon';
 
 const MODULE_CARDS = [
   {
     to: '/learn',
-    icon: '📚',
+    icon: 'learn',
+    hub: 'learn',
     title: '学习',
     desc: '系统掌握和弦、音阶与指板基础。',
   },
   {
     to: '/practice',
-    icon: '🎯',
+    icon: 'practice',
+    hub: 'practice',
     title: '练习',
     desc: '从调音、听音到综合训练，马上开练。',
   },
   {
     to: '/play',
-    icon: '🎼',
+    icon: 'play',
+    hub: 'play',
     title: '伴奏',
     desc: '跟着节奏和和弦，把练习变成完整演奏。',
   },
@@ -282,8 +286,10 @@ function HomePageInner() {
         <div className="section-title">继续探索</div>
         <div className="home-grid home-grid-modules">
           {MODULE_CARDS.map((card) => (
-            <Link key={card.to} to={card.to} className="module-card">
-              <span className="hc-icon">{card.icon}</span>
+            <Link key={card.to} to={card.to} className={`module-card module-card-${card.hub}`}>
+              <span className="hc-icon" aria-hidden="true">
+                <Icon name={card.icon} size={26} strokeWidth={1.7} />
+              </span>
               <span className="hc-title">{card.title}</span>
               <span className="hc-desc">{card.desc}</span>
             </Link>

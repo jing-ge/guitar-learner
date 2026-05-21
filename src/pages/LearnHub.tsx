@@ -9,15 +9,16 @@ import FretboardPage from './FretboardPage';
 import CircleOfFifthsPage from './CircleOfFifthsPage';
 import { CHORDS } from '../theory/chords';
 import { SCALES } from '../theory/scales';
+import { Icon } from '../components/Icon';
 
 type LearnTab = 'chords' | 'scales' | 'penta' | 'fretboard' | 'circle';
 
-const TABS: { key: LearnTab; icon: string; label: string }[] = [
-  { key: 'chords',    icon: '🎵', label: '和弦' },
-  { key: 'scales',    icon: '🎼', label: '音阶' },
-  { key: 'penta',     icon: '🎯', label: '五声' },
-  { key: 'fretboard', icon: '🎸', label: '指板' },
-  { key: 'circle',    icon: '⭕', label: '五度圈' },
+const TABS: { key: LearnTab; icon: 'chord' | 'scale' | 'penta' | 'fretboard' | 'circle'; label: string }[] = [
+  { key: 'chords',    icon: 'chord',     label: '和弦' },
+  { key: 'scales',    icon: 'scale',     label: '音阶' },
+  { key: 'penta',     icon: 'penta',     label: '五声' },
+  { key: 'fretboard', icon: 'fretboard', label: '指板' },
+  { key: 'circle',    icon: 'circle',    label: '五度圈' },
 ];
 
 export default function LearnHub() {
@@ -25,11 +26,11 @@ export default function LearnHub() {
 
   const subtitle = useMemo<{ title: string; meta?: string }>(() => {
     switch (tab) {
-      case 'chords':    return { title: `🎵 和弦 · ${CHORDS.length} 个`, meta: '标准调弦' };
-      case 'scales':    return { title: `🎼 音阶 · ${SCALES.length} 种` };
-      case 'penta':     return { title: '🎯 五声 · 3 类', meta: '5 把位' };
-      case 'fretboard': return { title: '🎸 指板' };
-      case 'circle':    return { title: '⭕ 五度圈 · 12 调' };
+      case 'chords':    return { title: `和弦 · ${CHORDS.length} 个`, meta: '标准调弦' };
+      case 'scales':    return { title: `音阶 · ${SCALES.length} 种` };
+      case 'penta':     return { title: '五声 · 3 类', meta: '5 把位' };
+      case 'fretboard': return { title: '指板' };
+      case 'circle':    return { title: '五度圈 · 12 调' };
     }
   }, [tab]);
 
@@ -43,7 +44,9 @@ export default function LearnHub() {
             aria-label={t.label}
             className={'hub-tab' + (tab === t.key ? ' active' : '')}
             onClick={() => setTab(t.key)}>
-            <span className="hub-tab-icon" aria-hidden="true">{t.icon}</span>
+            <span className="hub-tab-icon" aria-hidden="true">
+              <Icon name={t.icon} size={18} />
+            </span>
             <span className="hub-tab-label">{t.label}</span>
           </button>
         ))}
