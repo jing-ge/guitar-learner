@@ -3490,3 +3490,107 @@ R65 「首调 / 调式」选择器用了全局 `.select` class, 但该 class 强
 **测试**: dev server HMR 即时验证
 
 
+---
+
+
+## 🎨 第七阶段：视觉重构 + UX 打磨 + bug 修复
+
+### Round 67 _2026-05-20 ~ 2026-05-21_: 视觉重构 4 Pass + 精修 6 项 + 音准训练 2 bug 修复
+
+**主题**：把"工程师审美"提到产品级 — token / 图标 / 浅色主题 / 微装饰 / 微交互 / 空状态 / 录音按钮 / 鼓机网格 / 错觉 bug
+
+**改动文件**：
+- `src/styles/global.css` (~+1100 / -255 行)
+- `src/components/Icon.tsx` (新建, 22 个内联 SVG)
+- `src/App.tsx` (顶栏 brand mark + 底部 4 tab SVG)
+- `src/pages/HomePage.tsx` (新手 CTA 重做 + 空状态)
+- `src/pages/LearnHub.tsx` (5 sub-tab SVG + circle 冷色)
+- `src/pages/PracticeHub.tsx` + `PlayHub.tsx` (入口卡 icon badge)
+- `src/pages/ListenPage.tsx` (录音按钮 + 标题 / segmented icon)
+- `src/pages/DailySetPage.tsx` (子页面 emoji 清理)
+- `src/pages/DrumMachinePage.tsx` (step grid sequencer 化)
+- `src/pages/PitchTrainerPage.tsx` (2 个 bug 修复)
+- `.gitignore` (ignore `.review/` `.omc/` `.claude/`)
+
+#### Pass 1 · Token 系统重做
+- 表面色阶 4 级 (`#0A0E15` → `#1B2434`), 替代原 `#0f1419` 单色背景
+- 字号 scale 8 stops (`--fs-xs` ~ `--fs-4xl`), 行高 / 字重 token 化
+- 阴影 4 级 (`--shadow-sm` ~ `--shadow-xl`)
+- Brand 由 `#F59E0B` → `#F5A524` (略暖), 引入 `--brand-soft / --brand-line` 复用
+- Hub 色相 token (`--hub-home/learn/practice/play`), 仅用作微装饰
+- 底部 tab active 加 `::before` 高亮条 (28×2.5px + glow), 替代单色变化
+- 按钮渐变 + 双层 box-shadow (inset highlight + drop shadow)
+- Brand mark: 顶栏左上 26×26 圆角橙色徽章 + play-fill SVG
+
+#### Pass 2 · Emoji → SVG (零依赖, APK 离线兼容)
+新建 `Icon.tsx` (~290 行, 22 个内联 24×24 stroke SVG):
+- 底部 tab: home / learn / practice / play
+- Hub sub-tab: chord / scale / penta / fretboard / circle
+- 练习入口: tuner / headphones / target
+- 伴奏入口: song / drum / progression / strum / bass
+- 杂项: sun / moon / arrow-right / check / mic / play-fill / pin / refresh
+
+**意义**: 之前 5 个伴奏入口里 4 个用 🎸 (吉他和贝斯无区分), 替换后视觉信号清晰; APK 在不同 Android 厂商上的 emoji 字形差异消除。
+
+#### Pass 3 · 浅色主题重写
+- 删旧 `linear-gradient(白→灰)` 卡片配色, 改纯白卡 + 软阴影
+- Brand 浅色降饱和 (`#E2820F`, 比深色低 10%)
+- Shadow 用冷调 `rgba(15,23,42,0.06)` 而非纯黑
+- 删除 4 处后置 `[data-theme="light"]` 冲突 override
+- 浅色 hero / recommend / module-card / hub-tab / segmented 等全套重写
+
+#### Pass 4 · Hub 色相微装饰（保守）
+- 首页"继续探索"3 个 module-card icon badge 各带 hub hue (学习蓝 / 练习橙 / 伴奏紫)
+- CTA / nav / 主卡片仍统一橙, 仅 icon badge 区分
+- 浅色 / 深色各一套
+
+#### B1 · 子页面 emoji 清理
+ListenPage / DailySetPage / DrumMachinePage 移除装饰性 emoji (🎧🎵🎼🎯🥁🎸🎛️👂📌), 改 SVG 或纯文本。
+
+#### B2 · 录音按钮重做
+ListenPage 黄绿渐变 (与 brand 不协调) → red gradient (`#FF6B6B → #DC2626 → #991B1B`) + 大 mic SVG + 同心圆 `recordHalo` 脉冲动画 + 3 层 box-shadow (inset / outer ring / drop shadow)。
+
+#### B3 · 鼓机 step grid sequencer 化
+提取 `.dm-step` 类: active step 加 inset gradient + outer glow, current step 加 brand ring + scale + glow, 与 voice-color CSS var 联动。
+
+#### B4 · 五度圈 hub-tab 冷色
+仅 `[data-hue="circle"]` active 时用 cyan tint (`#4DD8E8` dark / `#0891B2` light), 呼应五度圈本身的多 hue 性格; 其它 4 tab 仍橙。
+
+#### B5 · 微交互
+- `hub-content key={tab}` 切换时横向 slide-in (260ms)
+- module-menu-card hover: `entry-card-icon` scale 1.06 + rotate -4° (spring), `menu-card-tag svg` 右移 2px
+- module-card hover: icon scale 1.08 + rotate -3°
+
+#### B6 · 首页空状态
+新手 0/0/0 改为 `—/—/0` (避免压力); streak > 0 才显示真数字。
+
+#### Hero 新手 CTA 重做
+- greeting "继续练琴" → "欢迎" (空数据不合理)
+- h1 "今日练什么" → "从这里开始"
+- helper 改 "第一次来? 3 分钟带你跑通：调音→听音→跟弹一首"
+- 新手: 单按钮全宽 `我是新手 · 从调音开始 →` (52px, fs-lg)
+  + 小灰字下划线链接 `或直接看每日 5 分钟套餐`
+  形成"主 CTA + skip link"标准 onboarding 视觉层级
+- 回头客: 维持原 `每日 5 分钟` + 继续练习 双按钮, 移除 "我是新手"
+
+#### bug fix · 音准训练 #1: 命中后卡住
+**症状**: 答对一题后 UI 冻结, 进不去下一题。
+**根因**: `handleResult` 每帧调用, 命中 500ms 后 `commitResult` 被反复触发 (多次 setResults / 多次 setTimeout(1200) 并发推 idx → 越界 → currentQuestion undefined)。
+**修复**: 加 `committedRef`, commitResult 首句 return 阻断重入; handleResult 也在 commit 后早 return 不再积累 hit/near ref。新题 useEffect(currentIdx) 重置标记。
+
+#### bug fix · 音准训练 #2: 示范音直接判定准
+**症状**: 唱准模式自动播放参考音后立刻显示 "✓ 准！", 用户根本没出声。
+**根因**: `synth.playMidi` 播目标音, 麦克风同时在录, 录到自己 → cents≈0 → hit threshold 500ms 立即满足 → 假命中。
+**修复**: `muteUntilRef = now + 1850ms` (覆盖 1.6s 衰减 + 250ms 余量), handleResult 在静音窗口内 return; `playTarget` 时同步重置 hit/near/progress 显示。
+
+**测试**:
+- `npx tsc -b --noEmit` ✓
+- `npm run build` ✓ (516KB, 含 inline-dist)
+- 16 张截图全量重生成 (`docs/screenshots/`), 深浅主题各 11 + 1
+- Playwright capture 全过
+
+**对比文件留档**: `.review/before/` 16 张 vs `.review/after/` 16 张 (gitignore)
+
+**EAS APK build**: pending (本轮 commit 后触发)
+
+

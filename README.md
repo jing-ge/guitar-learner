@@ -32,7 +32,8 @@
 - 🎧 **实时和弦识别** —— FFT + Chroma + 156 模板 + 状态机防抖,30+ 轮算法迭代
 - 🧠 **离线扒带** —— Essentia.js 一键出 BPM + 调性 + 节拍对齐和弦时间线 + 主旋律 MIDI
 - 🥁 **毫秒级精准节奏** —— Web Audio Lookahead Scheduler,锁屏/掉帧不漂移
-- 🌗 **深浅双主题** —— APK 内 status bar / nav bar 跟随切换,无白边
+- 🎨 **设计系统化** —— CSS token + 22 个内联 SVG icon (零依赖) + 微交互, APK 跨厂商字形一致
+- 🌗 **深浅双主题** —— 浅色重写、阴影/对比度精修, APK 内 status bar / nav bar 跟随切换
 
 > 📜 历次迭代过程(60+ 轮)与版本变更见 [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
@@ -133,6 +134,7 @@
 |---|---|
 | 前端 | React 18 · Vite 5 · TypeScript 5 |
 | 路由 | React Router DOM v6(HashRouter,兼容 `file://`) |
+| 设计系统 | CSS 变量 token (字号 / 间距 / 阴影 / 色板) · 22 个内联 SVG icon (零依赖) · 深浅双主题 |
 | 实时音频 | Web Audio API · `AnalyserNode` (FFT) · 自研 YIN / 模板匹配引擎 |
 | 离线分析 | [Essentia.js](https://essentia.upf.edu/essentiajs.html)(WASM,懒加载 ~2.5MB) |
 | 录音持久化 | IndexedDB(Float32Array → Blob,上限 20 条) |
