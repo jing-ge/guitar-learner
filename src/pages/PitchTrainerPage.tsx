@@ -130,6 +130,10 @@ export default function PitchTrainerPage() {
   const nearStartRef = useRef<number>(0);
   const bestCentsRef = useRef<number>(999);
   const recordedRef = useRef<boolean>(false);
+  /** 已提交过当前题 — 防止 commitResult 在 setTimeout 1200ms 期间被 handleResult 反复触发 */
+  const committedRef = useRef<boolean>(false);
+  /** 示范音播放期间静音麦克风检测, 否则 synth 自己的目标音会被录回判定为命中 */
+  const muteUntilRef = useRef<number>(0);
 
   const currentQuestion = questions[currentIdx];
 
@@ -140,6 +144,18 @@ export default function PitchTrainerPage() {
   // 命中处理 — 每帧调用
   const handleResult = useCallback((res: PitchResult | null) => {
     if (!currentQuestion) return;
+    // R67 fix#2: 示范音 / 播放期间静音麦克风检测, 否则 synth 自己的目标音被录回判命中
+    if (performance.now() < muteUntilRef.current) {
+      setCurrentCents(null);
+      setCurrentNote('-');
+      setCurrentMidi(null);
+      hitStartRef.current = 0;
+      nearStartRef.current = 0;
+      setHitProgress(0);
+      return;
+    }
+    // R67 fix#1: 已 commit 过当前题, 直接忽略后续帧, 防止重复 setResults / setTimeout 越界
+    if (committedRef.current) return;
     if (!res || res.rms < MIN_RMS) {
       setCurrentCents(null);
       setCurrentNote('-');
@@ -188,6 +204,9 @@ export default function PitchTrainerPage() {
 
   const commitResult = useCallback((score: 0 | 0.5 | 1) => {
     if (!currentQuestion) return;
+    // R67 fix#1: 整个生命周期只能 commit 一次, 第二次直接 return
+    if (committedRef.current) return;
+    committedRef.current = true;
     if (score === 1) vibrate(20);
     else if (score === 0.5) vibrate(10);
     else vibratePattern([30, 50, 30]);
@@ -211,6 +230,7 @@ export default function PitchTrainerPage() {
         bestCentsRef.current = 999;
         hitStartRef.current = 0;
         nearStartRef.current = 0;
+        committedRef.current = false;  // R67: 新题允许 commit
         questionStartRef.current = performance.now();
         setHitProgress(0);
         setTaskFeedback('idle');
@@ -245,6 +265,8 @@ export default function PitchTrainerPage() {
     bestCentsRef.current = 999;
     hitStartRef.current = 0;
     nearStartRef.current = 0;
+    committedRef.current = false;  // R67: 新一组从未 commit 开始
+    muteUntilRef.current = 0;
     questionStartRef.current = performance.now();
     startTimeRef.current = performance.now();
     recordedRef.current = false;
@@ -288,12 +310,25 @@ export default function PitchTrainerPage() {
     recordSession('pitch-train', Math.round(totalScore * 10), TOTAL_QUESTIONS * 10, secs);
   }, [step, results]);
 
-  // 播放目标音示范
+  // 播放目标音示范 — 期间静音麦克风检测, 避免录回自己
   const playTarget = useCallback(async () => {
     if (!currentQuestion) return;
     await synth.unlock();
+    // synth.playMidi 默认衰减 ~1.6s, 加 250ms 余量覆盖回响 + 麦克风延迟
+    muteUntilRef.current = performance.now() + 1850;
+    hitStartRef.current = 0;
+    nearStartRef.current = 0;
+    setHitProgress(0);
+    setCurrentCents(null);
+    setCurrentNote('-');
     synth.playMidi(currentQuestion.midi, 1.6);
   }, [currentQuestion]);
+
+  // 进入新题时重置 committed 标记 + 清 mute (上一题 playTarget 余音可能还没到期)
+  useEffect(() => {
+    committedRef.current = false;
+    muteUntilRef.current = 0;
+  }, [currentIdx]);
 
   // 自动播放目标音（每题开始时）
   useEffect(() => {

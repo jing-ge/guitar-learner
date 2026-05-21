@@ -1954,6 +1954,22 @@ input, select, textarea { font-size: 16px; }
 .hero-actions-secondary { margin-top: 8px; }
 .hero-actions-secondary .hero-btn { flex: 0 1 auto; }
 
+/* 新手 CTA — 单按钮占整行 + arrow 强调动作 */
+.newbie-cta {
+  flex: 1 1 100%;
+  min-height: 52px;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.newbie-cta svg {
+  transition: transform .25s var(--ease-spring);
+}
+.newbie-cta:hover svg { transform: translateX(3px); }
+
 .daily-progress {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

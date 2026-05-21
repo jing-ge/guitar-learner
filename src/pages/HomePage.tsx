@@ -61,7 +61,7 @@ function useInstallInfo() {
 }
 
 function getGreeting(summary: ReturnType<typeof getPracticeSummary>) {
-  if (!summary.hasAnyRecord) return '继续练琴';
+  if (!summary.hasAnyRecord) return '欢迎';
   const hour = new Date().getHours();
   if (hour < 11) return '早上好';
   if (hour < 18) return '下午好';
@@ -70,7 +70,7 @@ function getGreeting(summary: ReturnType<typeof getPracticeSummary>) {
 
 function getPrimaryAction(summary: ReturnType<typeof getPracticeSummary>) {
   if (!summary.hasAnyRecord) {
-    return { label: '从调音开始', helper: '先把琴调准，再进入今天的练习。' };
+    return { label: '从调音开始', helper: '第一次来? 3 分钟带你跑通：调音 → 听音 → 跟弹一首。' };
   }
   if (summary.hasTodayRecord) {
     return { label: '继续今天练习', helper: '你已经开始了，继续保持手感。' };
@@ -189,7 +189,7 @@ function HomePageInner() {
     <div className="home-layout">
       <section className="hero-card">
         <div className="hero-topline">{greeting}</div>
-        <h1>今日练什么</h1>
+        <h1>{summary.hasAnyRecord ? '今日练什么' : '从这里开始'}</h1>
         <p>{primaryAction.helper}</p>
 
         <div className="hero-stats">
@@ -207,22 +207,36 @@ function HomePageInner() {
           </div>
         </div>
 
-        <div className="hero-actions">
-          <button className="btn btn-primary hero-btn" onClick={() => navigate('/practice/daily')}>
-            {dailySet.completedCount > 0 ? '🔁 再来一次套餐' : '▶ 每日 5 分钟'}
-          </button>
-          <button className="btn btn-ghost hero-btn" onClick={() => navigate('/practice')}>
-            {primaryAction.label}
-          </button>
-        </div>
-        <div className="hero-actions hero-actions-secondary">
-          <button
-            className="btn btn-ghost hero-btn"
-            onClick={() => navigate('/practice?start=newbie')}
-          >
-            我是新手，带我开始
-          </button>
-        </div>
+        {summary.hasAnyRecord ? (
+          <div className="hero-actions">
+            <button className="btn btn-primary hero-btn" onClick={() => navigate('/practice/daily')}>
+              {dailySet.completedCount > 0 ? '再来一次套餐' : '每日 5 分钟'}
+            </button>
+            <button className="btn btn-ghost hero-btn" onClick={() => navigate('/practice')}>
+              {primaryAction.label}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="hero-actions">
+              <button
+                className="btn btn-primary hero-btn newbie-cta"
+                onClick={() => navigate('/practice?start=newbie')}
+              >
+                我是新手 · 从调音开始
+                <Icon name="arrow-right" size={16} strokeWidth={2.2} style={{ marginLeft: 6 }} />
+              </button>
+            </div>
+            <div className="hero-actions hero-actions-secondary">
+              <button
+                className="btn btn-ghost hero-btn"
+                onClick={() => navigate('/practice/daily')}
+              >
+                直接看每日 5 分钟套餐
+              </button>
+            </div>
+          </>
+        )}
 
         {newbieActivated && (
           <div className="hero-inline-tip">已为你打开新手路径入口，去练习中心从调音器开始。</div>
