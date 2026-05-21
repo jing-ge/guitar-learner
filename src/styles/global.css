@@ -1951,6 +1951,30 @@ input, select, textarea { font-size: 16px; }
 /* ============ Daily Set (round30, tokens unified round34) ============ */
 .daily-set { display: grid; gap: 14px; padding-bottom: 24px; }
 
+/* 新手 hero 里的 "跳过引导" 文字链 — 不用 .btn 避免和主 CTA 视觉冲突 */
+.hero-skip-link {
+  display: block;
+  margin: 10px auto 0;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(126,134,148,0.36);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  transition: color .15s var(--ease-out), text-decoration-color .15s var(--ease-out);
+}
+.hero-skip-link:hover {
+  color: var(--text-body);
+  text-decoration-color: rgba(126,134,148,0.72);
+}
+.hero-skip-link:active { transform: scale(0.98); }
+
 .hero-actions-secondary { margin-top: 8px; }
 .hero-actions-secondary .hero-btn { flex: 0 1 auto; }
 

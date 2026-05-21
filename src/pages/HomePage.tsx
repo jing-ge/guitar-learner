@@ -227,14 +227,13 @@ function HomePageInner() {
                 <Icon name="arrow-right" size={16} strokeWidth={2.2} style={{ marginLeft: 6 }} />
               </button>
             </div>
-            <div className="hero-actions hero-actions-secondary">
-              <button
-                className="btn btn-ghost hero-btn"
-                onClick={() => navigate('/practice/daily')}
-              >
-                直接看每日 5 分钟套餐
-              </button>
-            </div>
+            <button
+              type="button"
+              className="hero-skip-link"
+              onClick={() => navigate('/practice/daily')}
+            >
+              或直接看每日 5 分钟套餐
+            </button>
           </>
         )}
 
