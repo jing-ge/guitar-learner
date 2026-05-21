@@ -42,6 +42,7 @@ export default function LearnHub() {
             role="tab"
             aria-selected={tab === t.key}
             aria-label={t.label}
+            data-hue={t.key}
             className={'hub-tab' + (tab === t.key ? ' active' : '')}
             onClick={() => setTab(t.key)}>
             <span className="hub-tab-icon" aria-hidden="true">
@@ -55,7 +56,7 @@ export default function LearnHub() {
         <span className="ls-title">{subtitle.title}</span>
         {subtitle.meta && <span className="ls-meta">{subtitle.meta}</span>}
       </div>
-      <div className="hub-content">
+      <div className="hub-content" key={tab}>
         {tab === 'chords' && <ChordsPage />}
         {tab === 'scales' && <ScalesPage />}
         {tab === 'penta' && <PentatonicPage />}

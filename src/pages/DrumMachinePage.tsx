@@ -173,7 +173,7 @@ function PatternGrid({ pattern, currentStep }: { pattern: DrumPattern; currentSt
             <div style={{ display: 'flex', gap: 2, flex: 1 }}>
               {pattern.grid.map((cell, i) => {
                 const on = cell.includes(v); const isCur = i === currentStep; const isBeat = i % stepsPerBeat === 0;
-                return <div key={i} style={{ flex: 1, minWidth: 14, height: 18, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? (isCur ? 1 : 0.85) : (isBeat ? 0.5 : 0.25), border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)', boxShadow: isCur ? '0 0 0 2px rgba(245,158,11,0.45)' : 'none', transform: isCur && on ? 'scale(1.08)' : 'scale(1)', transition: 'transform 70ms var(--ease-out), box-shadow 70ms var(--ease-out)' }} />;
+                return <div key={i} className={'dm-step' + (on ? ' on' : '') + (isCur ? ' current' : '') + (isBeat ? ' beat' : '')} style={{ flex: 1, minWidth: 14, height: 18, ['--step-color' as string]: VOICE_COLOR[v] }} />;
               })}
             </div>
           </div>
@@ -391,7 +391,7 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
       </div>
 
       {/* 歌曲结构 */}
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, paddingLeft: 4 }}>🎵 歌曲结构</div>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, paddingLeft: 4 }}>歌曲结构</div>
       <div style={{ background: 'var(--bg-soft)', borderRadius: 12, padding: 10 }}>
         {song.map((sec, i) => {
           const secDef = SECTION_DEFAULTS[sec.kind];
@@ -490,7 +490,7 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，长按克隆/应用</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，长按克隆/应用</span></div>
         {presetCategories.map(([cat, list]) => (
           <div key={cat} style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>{cat}</div>
@@ -552,7 +552,8 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
                 {editing.grid.map((cell, i) => {
                   const on = cell.includes(v);
                   const isCur = i === currentStep;
-                  return <button key={i} style={{ flex: 1, minWidth: 16, height: 22, borderRadius: 3, background: on ? VOICE_COLOR[v] : 'var(--bg-soft)', opacity: on ? 0.9 : 0.3, border: isCur ? '2px solid var(--brand)' : '1px solid var(--line-soft)', cursor: 'pointer', padding: 0, transform: isCur ? 'scale(1.1)' : 'scale(1)', transition: 'all 0.05s' }} onClick={() => { const newGrid = editing.grid.map((c, idx) => idx === i ? (c.includes(v) ? c.filter(x => x !== v) : [...c, v]) : c); updateEditing({ grid: newGrid }); }} />;
+                  const isBeat = i % (editing.steps === 12 ? 3 : 4) === 0;
+                  return <button key={i} className={'dm-step dm-step-edit' + (on ? ' on' : '') + (isCur ? ' current' : '') + (isBeat ? ' beat' : '')} style={{ flex: 1, minWidth: 16, height: 22, ['--step-color' as string]: VOICE_COLOR[v] }} onClick={() => { const newGrid = editing.grid.map((c, idx) => idx === i ? (c.includes(v) ? c.filter(x => x !== v) : [...c, v]) : c); updateEditing({ grid: newGrid }); }} />;
                 })}
               </div>
             </div>
@@ -613,7 +614,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {CHORD_PROGRESSIONS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -681,7 +682,7 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
 
           {/* 添加模式 tab: 音名 / 级数 */}
           <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
-            <button className={'chip' + (addMode === 'name' ? ' active' : '')} onClick={() => setAddMode('name')} style={{ fontSize: 11 }}>🎵 按音名编</button>
+            <button className={'chip' + (addMode === 'name' ? ' active' : '')} onClick={() => setAddMode('name')} style={{ fontSize: 11 }}>按音名编</button>
             <button className={'chip' + (addMode === 'degree' ? ' active' : '')} onClick={() => setAddMode('degree')} style={{ fontSize: 11 }}>🔢 按级数编</button>
             <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto', alignSelf: 'center' }}>
               {addMode === 'name' ? '点击下面具体和弦' : '点击级数自动落 ' + (editing.key ?? 'C') + ' ' + (editing.mode === 'minor' ? '小' : '大') + '调的对应和弦'}
@@ -863,7 +864,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {CHORD_STRUM_PATTERNS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}
@@ -1062,7 +1063,7 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
     <>
       {/* 预设库 */}
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🎯 预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>预设库 <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 11 }}>点击试听，右键克隆</span></div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {BASS_PATTERNS.map(p => (
             <button key={p.id} className="chip" style={{ position: 'relative', paddingRight: 24 }}

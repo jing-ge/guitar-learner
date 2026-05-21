@@ -195,15 +195,15 @@ function HomePageInner() {
         <div className="hero-stats">
           <div className="stat-pill">
             <span>分钟</span>
-            <strong>{Math.floor(today.totalSeconds / 60)}</strong>
+            <strong>{summary.hasAnyRecord ? Math.floor(today.totalSeconds / 60) : '—'}</strong>
           </div>
           <div className="stat-pill">
             <span>答对</span>
-            <strong>{today.totalRight || 0}</strong>
+            <strong>{summary.hasAnyRecord ? (today.totalRight || 0) : '—'}</strong>
           </div>
           <div className="stat-pill">
             <span>连续天数</span>
-            <strong>{summary.streak || 0}</strong>
+            <strong>{summary.streak > 0 ? summary.streak : (summary.hasAnyRecord ? '—' : '0')}</strong>
           </div>
         </div>
 

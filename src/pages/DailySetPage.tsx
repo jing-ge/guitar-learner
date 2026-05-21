@@ -241,7 +241,7 @@ function WarmupStep({ onNext, onSkip }: { onNext: () => void; onSkip: () => void
   return (
     <section className="card daily-step-card">
       <div className="card-kicker">第 1 步 · 热身</div>
-      <h2>{tuned ? '✓ 今日已调音' : '🎛️ 先把琴调准'}</h2>
+      <h2>{tuned ? '今日已调音 ✓' : '先把琴调准'}</h2>
       <p>
         {tuned
           ? '你今天已经调过音了，可以直接进入听音热身。'
@@ -403,7 +403,7 @@ function EarStep({
         第 2 步 · 听音辨认 · 剩 {Math.max(0, remaining)} / {QUIZ_QUESTIONS}
       </div>
       <h2>
-        {current.kind === 'note' ? '👂 这是什么音？' : '🎼 这是大三还是小三和弦？'}
+        {current.kind === 'note' ? '这是什么音？' : '这是大三还是小三和弦？'}
       </h2>
       <div className="btn-row" style={{ justifyContent: 'center', marginTop: 6 }}>
         <button className="btn btn-primary" onClick={replay}>▶ 再听一次</button>
@@ -602,7 +602,7 @@ function PlayStep({ onDone, onSkip }: { onDone: () => void; onSkip: () => void }
       <div className="card-kicker">
         第 3 步 · 和弦跟弹 · BPM {PLAY_BPM}
       </div>
-      <h2>🎸 {progression.name}</h2>
+      <h2>{progression.name}</h2>
       <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--text-muted)', marginTop: -4 }}>
         走向：<b>{arrow}</b>，重复 2 轮
       </p>
@@ -687,7 +687,7 @@ function DoneStep({
 
       {mistakes.length > 0 && (
         <div className="daily-mistakes">
-          <div className="daily-mistakes-title">📌 听音错题回顾</div>
+          <div className="daily-mistakes-title">听音错题回顾</div>
           <p className="daily-mistakes-hint">点正确答案再听一次，加深印象。</p>
           <div className="daily-mistakes-list">
             {mistakes.map((m, i) => {

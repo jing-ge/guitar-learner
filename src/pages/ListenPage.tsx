@@ -15,6 +15,7 @@ import ChordSummaryCard, { summarizeChords, parseRootPc } from '../components/Ch
 import MelodyTimeline from '../components/MelodyTimeline';
 import FretboardMap from '../components/FretboardMap';
 import PlaybackControls from '../components/PlaybackControls';
+import { Icon } from '../components/Icon';
 import {
   analyzeRecording, warmupEngine, isEngineReady, extractMelody,
   type AnalysisResult, type BeatChord, type MelodyTrack,
@@ -408,7 +409,7 @@ export default function ListenPage() {
   return (
     <div>
       <div className="card">
-        <h2>🎧 听歌识别 (Essentia)</h2>
+        <h2 className="title-with-icon"><Icon name="headphones" size={20} /> 听歌识别 (Essentia)</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
           离线模式：录一段音频 → 用 Essentia.js 分析<br/>
           <span style={{ fontSize: 12 }}>「和弦/调性」识别和弦走向 + 调性 + BPM｜「主旋律」提取音高轨</span>
@@ -529,7 +530,7 @@ export default function ListenPage() {
               setMelody(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
-          >🎵 和弦/调性</button>
+          ><span className="seg-icon"><Icon name="chord" size={14} /></span> 和弦/调性</button>
           <button
             role="tab"
             aria-selected={mode === 'melody'}
@@ -542,7 +543,7 @@ export default function ListenPage() {
               setResult(null);
             }}
             disabled={phase === 'recording' || phase === 'analyzing'}
-          >🎼 主旋律</button>
+          ><span className="seg-icon"><Icon name="scale" size={14} /></span> 主旋律</button>
         </div>
         {mode === 'melody' && (
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.6 }}>
@@ -572,17 +573,10 @@ export default function ListenPage() {
         {/* 主按钮区 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 18, gap: 12 }}>
           {phase === 'idle' && (
-            <button
-              onClick={startRecording}
-              style={{
-                width: 120, height: 120, borderRadius: '50%',
-                border: 'none', cursor: 'pointer',
-                background: 'linear-gradient(135deg, var(--brand), var(--accent-cyan, var(--brand)))',
-                color: '#fff', fontSize: 16, fontWeight: 700,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >🎤<br/>开始录音</button>
+            <button onClick={startRecording} className="record-btn" aria-label="开始录音">
+              <span className="record-btn-icon"><Icon name="mic" size={36} strokeWidth={2} /></span>
+              <span className="record-btn-label">开始录音</span>
+            </button>
           )}
 
           {phase === 'requesting' && (
@@ -850,7 +844,7 @@ function ChordTimeline({ beatChords, totalDuration, currentSec, onSeek }: {
 
   return (
     <div className="card">
-      <h2>🎵 节拍和弦时间线</h2>
+      <h2 className="title-with-icon"><Icon name="chord" size={20} /> 节拍和弦时间线</h2>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
         {beatChords.length} 个 beat-aligned 和弦段（卡节拍）
         {snappedCount > 0 && (

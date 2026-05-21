@@ -268,6 +268,90 @@ a:focus-visible,
 .card h2 { margin: 0 0 8px; font-size: var(--fs-xl); line-height: 24px; font-weight: var(--fw-bold); letter-spacing: -0.01em; }
 .card p { margin: 4px 0; color: var(--text-body); font-size: var(--fs-base); line-height: var(--lh-loose); }
 
+/* 标题前置 icon (统一外观) */
+.title-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.title-with-icon svg {
+  color: var(--brand-strong);
+  flex-shrink: 0;
+}
+
+/* 分段控件里的 icon */
+.seg-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+/* ========== ListenPage 录音按钮 (B2) ========== */
+.record-btn {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: radial-gradient(120% 100% at 30% 25%, #FF6B6B 0%, #DC2626 55%, #991B1B 100%);
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.32) inset,
+    0 0 0 6px rgba(220,38,38,0.10),
+    0 12px 32px rgba(220,38,38,0.42),
+    0 4px 8px rgba(0,0,0,0.20);
+  transition: transform .15s var(--ease-spring), box-shadow .25s var(--ease-out);
+}
+.record-btn::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(220,38,38,0.32);
+  pointer-events: none;
+  animation: recordHalo 2s ease-out infinite;
+}
+.record-btn:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.42) inset,
+    0 0 0 8px rgba(220,38,38,0.14),
+    0 16px 40px rgba(220,38,38,0.52),
+    0 6px 12px rgba(0,0,0,0.24);
+}
+.record-btn:active { transform: scale(0.95); }
+.record-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.32));
+}
+.record-btn-label {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.06em;
+}
+@keyframes recordHalo {
+  0%   { transform: scale(1);    opacity: 0.72; }
+  60%  { transform: scale(1.18); opacity: 0; }
+  100% { transform: scale(1.18); opacity: 0; }
+}
+[data-theme="light"] .record-btn {
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.42) inset,
+    0 0 0 6px rgba(220,38,38,0.06),
+    0 10px 24px rgba(220,38,38,0.32),
+    0 2px 4px rgba(15,23,42,0.06);
+}
+
 .section-title {
   font-size: var(--fs-lg); line-height: 22px; font-weight: var(--fw-bold);
   color: var(--text-strong);
@@ -694,6 +778,19 @@ a:focus-visible,
   box-shadow: var(--shadow-lg);
 }
 .module-menu-card:hover::after { opacity: 1; }
+.module-menu-card:hover .entry-card-icon {
+  transform: scale(1.06) rotate(-4deg);
+  border-color: rgba(245,165,36,0.40);
+}
+.module-menu-card:hover .menu-card-tag svg {
+  transform: translateX(2px);
+}
+.entry-card-icon {
+  transition: transform .25s var(--ease-spring), border-color .2s var(--ease-out);
+}
+.menu-card-tag svg {
+  transition: transform .2s var(--ease-out);
+}
 .module-menu-card:active { transform: scale(0.985); }
 .module-menu-card > * { position: relative; z-index: 1; }
 .menu-card-title {
@@ -1049,6 +1146,50 @@ a:focus-visible,
   padding: 16px; background: linear-gradient(180deg, var(--bg-elev-2) 0%, rgba(17,24,43,0.92) 100%);
   border: 1px solid var(--line-soft); border-radius: 12px;
 }
+
+/* ========== DrumMachine step grid (B3) ========== */
+.dm-step {
+  --step-color: var(--brand);
+  display: inline-block;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+  opacity: 0.30;
+  transition: opacity .12s var(--ease-out), transform 80ms var(--ease-out), box-shadow .12s var(--ease-out);
+  padding: 0;
+  position: relative;
+}
+.dm-step.beat { opacity: 0.45; }
+.dm-step.on {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 50%),
+    var(--step-color);
+  opacity: 0.92;
+  border-color: var(--step-color);
+  box-shadow:
+    0 0 0 0.5px rgba(255,255,255,0.20) inset,
+    0 1px 3px rgba(0,0,0,0.32);
+}
+.dm-step.current {
+  border-color: var(--brand);
+  box-shadow:
+    0 0 0 2px rgba(245,165,36,0.42),
+    0 0 12px rgba(245,165,36,0.42);
+  transform: scale(1.10);
+  z-index: 2;
+}
+.dm-step.on.current {
+  box-shadow:
+    0 0 0 2px var(--brand),
+    0 0 16px var(--step-color),
+    0 0 0 0.5px rgba(255,255,255,0.32) inset;
+  opacity: 1;
+}
+.dm-step-edit { cursor: pointer; }
+.dm-step-edit:hover { opacity: 0.6; }
+.dm-step-edit.on:hover { opacity: 1; }
+[data-theme="light"] .dm-step { border-color: var(--line-soft); }
+[data-theme="light"] .dm-step.beat { opacity: 0.55; }
 .bpm-display { font-size: 56px; font-weight: 700; line-height: 1; color: var(--brand); }
 .bpm-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .beat-dots { display: flex; gap: 8px; }
@@ -1582,8 +1723,38 @@ input, select, textarea { font-size: 16px; }
   border: 1px solid var(--brand-line);
   box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(245,165,36,0.18);
 }
+/* 五度圈 tab active 用冷青色, 呼应彩色 SVG 本身的多 hue 性格 */
+.hub-tab[data-hue="circle"].active {
+  background: linear-gradient(180deg, rgba(77,216,232,0.20) 0%, rgba(77,216,232,0.06) 100%);
+  color: var(--accent-cyan);
+  border-color: rgba(77,216,232,0.32);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 12px rgba(77,216,232,0.22);
+}
+[data-theme="light"] .hub-tab[data-hue="circle"].active {
+  background: linear-gradient(180deg, rgba(8,145,178,0.14) 0%, rgba(8,145,178,0.04) 100%);
+  color: var(--accent-cyan);
+  border-color: rgba(8,145,178,0.30);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.32) inset, 0 4px 10px rgba(8,145,178,0.16);
+}
 .hub-tab .hub-tab-icon { font-size: 18px; line-height: 1; }
-.hub-tab .hub-tab-label { font-size: 12px; line-height: 14px; }
+/* ========== Hub content 切换动画 (B5) ========== */
+.hub-content {
+  animation: hubSlideIn 260ms var(--ease-out);
+}
+@keyframes hubSlideIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Module card icon hover bounce (B5) */
+.module-card .hc-icon,
+.home-card .hc-icon {
+  transition: transform .3s var(--ease-spring), border-color .2s var(--ease-out);
+}
+.module-card:hover .hc-icon,
+.home-card:hover .hc-icon {
+  transform: scale(1.08) rotate(-3deg);
+}
 
 /* ========== 学习中心副标题 ========== */
 .learn-subtitle {
