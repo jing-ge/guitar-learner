@@ -234,6 +234,7 @@ export default function TunerPage() {
         eyebrow="PRACTICE · TUNER"
         title={heroTitle}
         desc={heroDesc}
+        meta="适合刚拿起琴时先热身 · 调准后建议继续做今日 5 分钟或综合训练"
       />
 
       <MicPermissionState state={micState} onRetry={startListen} />
@@ -415,6 +416,10 @@ export default function TunerPage() {
           <div className="tsc-emoji">🎉</div>
           <div className="tsc-title">全部调准！</div>
           <div className="tsc-sub">可以开始练习了</div>
+          <div className="tsc-actions">
+            <button className="btn btn-sm btn-primary" onClick={() => location.hash = '#/practice/daily'}>做今日 5 分钟</button>
+            <button className="btn btn-sm btn-ghost" onClick={() => location.hash = '#/practice'}>去训练中心</button>
+          </div>
         </div>
       )}
     </div>

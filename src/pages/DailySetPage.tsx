@@ -733,11 +733,18 @@ function DoneStep({
         <p className="daily-mistakes-empty">🌟 听音全对，今天耳朵在线！</p>
       )}
 
+      <div className="daily-next-card">
+        <div className="daily-next-kicker">下一步建议</div>
+        <div className="daily-next-title">趁手感还在，去做一次综合训练或跟伴奏弹一轮。</div>
+        <p className="daily-next-copy">如果今天听音错题比较多，先回训练区补一下；如果状态不错，直接去伴奏中心把今天的练习弹完整。</p>
+      </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, textAlign: 'center', marginTop: 12 }}>
         练习数据已记录。坚持每天来一次，连续天数会更长 🔥
       </p>
-      <div className="daily-actions">
+      <div className="daily-actions daily-actions-stacked">
         <button className="btn btn-primary daily-btn-primary" onClick={onAgain}>再来一次</button>
+        <button className="btn btn-ghost" onClick={() => location.hash = '#/practice'}>去做综合训练</button>
+        <button className="btn btn-ghost" onClick={() => location.hash = '#/play'}>去伴奏中心</button>
         <button className="btn btn-ghost" onClick={onHome}>回首页</button>
       </div>
     </section>

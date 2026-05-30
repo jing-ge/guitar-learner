@@ -16,6 +16,7 @@ import MelodyTimeline from '../components/MelodyTimeline';
 import FretboardMap from '../components/FretboardMap';
 import PlaybackControls from '../components/PlaybackControls';
 import { Icon } from '../components/Icon';
+import SubpageHero from '../components/SubpageHero';
 import {
   analyzeRecording, warmupEngine, isEngineReady, extractMelody,
   type AnalysisResult, type BeatChord, type MelodyTrack,
@@ -408,13 +409,12 @@ export default function ListenPage() {
 
   return (
     <div>
-      <div className="card">
-        <h2 className="title-with-icon"><Icon name="headphones" size={20} /> 听歌识别 (Essentia)</h2>
-        <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          离线模式：录一段音频 → 用 Essentia.js 分析<br/>
-          <span style={{ fontSize: 12 }}>「和弦/调性」识别和弦走向 + 调性 + BPM｜「主旋律」提取音高轨</span>
-        </p>
-      </div>
+      <SubpageHero
+        eyebrow="PRACTICE · LISTEN"
+        title={mode === 'chord' ? '听歌识别' : '主旋律扒带'}
+        desc={mode === 'chord' ? '录一小段音乐，离线识别和弦、调性与 BPM。' : '录一段单音旋律，提取音高轨并映射到吉他指板。'}
+        meta={mode === 'chord' ? '适合练耳、看走向、接着去伴奏中心继续弹' : '适合哼唱或单音旋律 · 识别后可继续对照指板练习'}
+      />
 
       {/* Round 48: 不支持 WebAssembly 的环境降级提示（如某些 Expo WebView 旧版本） */}
       {!supported && (
@@ -650,6 +650,27 @@ export default function ListenPage() {
             onSeek={playback.seek}
           />
           {summary && <ChordSummaryCard key={result.beatChords.length + ':' + result.key.key} summary={summary} />}
+          <div className="card listen-next-card">
+            <div className="card-kicker">识别完之后</div>
+            <h2>把这段结果转成下一步动作</h2>
+            <div className="listen-next-grid">
+              <div className="listen-next-item">
+                <div className="listen-next-item-title">继续校对</div>
+                <p>如果这次和弦变化偏粗或 key 不够稳，再录一段更干净、节拍更明确的片段做对比。</p>
+                <button className="btn btn-primary" onClick={reset}>再录一段</button>
+              </div>
+              <div className="listen-next-item">
+                <div className="listen-next-item-title">转去训练</div>
+                <p>把这次识别到的走向当练耳参考，回训练区继续做听音、和弦走向或节奏训练。</p>
+                <button className="btn btn-ghost" onClick={() => location.hash = '#/practice'}>去训练中心</button>
+              </div>
+              <div className="listen-next-item">
+                <div className="listen-next-item-title">转去伴奏</div>
+                <p>如果已经大致判断出 key 和走向，就去伴奏中心选 groove，把这组和弦弹起来。</p>
+                <button className="btn btn-ghost" onClick={() => location.hash = '#/play'}>去伴奏中心</button>
+              </div>
+            </div>
+          </div>
         </>
       )}
       {phase === 'done' && mode === 'melody' && melody && (
@@ -663,16 +684,28 @@ export default function ListenPage() {
           {melody.notes.length > 0 && (
             <FretboardMap notes={melody.notes} currentSec={playback.currentSec} />
           )}
+          <div className="card listen-next-card">
+            <div className="card-kicker">识别完之后</div>
+            <h2>把这条旋律拿去继续弹</h2>
+            <p>可以继续重录优化结果，或者切回练习中心，用今天的手感继续做听音和跟弹训练。</p>
+            <div className="btn-row">
+              <button className="btn btn-primary" onClick={reset}>再录一段</button>
+              <button className="btn btn-ghost" onClick={() => location.hash = '#/practice'}>去训练中心</button>
+            </div>
+          </div>
         </>
       )}
 
-      <div className="card">
-        <p style={{ fontSize: 13 }}>💡 <b>使用方法</b>：对着手机播放歌曲（音箱/另一台手机外放），或弹吉他录自己的进行。</p>
+      <div className="card listen-expectation-card">
+        <p style={{ fontSize: 13 }}>💡 <b>更适合的使用方式</b>：对着手机播放结构清楚、节拍稳定的片段，或直接录自己弹的和弦进行。</p>
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          ⚙️ Essentia.js 自带 ChordsDetectionBeats 算法：先用 RhythmExtractor2013 找节拍，再按节拍切片识别和弦，避免半拍闪烁。
+          ⚙️ Essentia.js 先找节拍，再按 beat 切片识别和弦，所以它更擅长给你一个“这段大概在什么 key、走向怎么走”的快速参考。
         </p>
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          ⚠️ 当前版本仅识别大三和弦/小三和弦（Cmaj7 会识别为 C，Am7 会识别为 Am）。
+          ⚠️ 当前版本更适合流行/民谣这类节拍稳定、和声清楚的段落；复杂和弦、密集编曲、转调或弱起片段，结果可能只适合当练习线索。
+        </p>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          🎸 当前版本仅识别大三/小三主干和弦（Cmaj7 更可能识别为 C，Am7 更可能识别为 Am），所以更适合练走向和伴奏，不适合直接替代精细扒谱。
         </p>
       </div>
       </>}
@@ -785,20 +818,29 @@ function ResultHeader({ result, summary }: { result: AnalysisResult; summary: im
   const flipped = summary?.recommendedKey &&
     (summary.recommendedKey.rootPc !== essentiaRootPc || summary.recommendedKey.scale !== result.key.scale);
 
+  const keyStrength = result.key.strength * 100;
   const confColor = result.key.strength > 0.6 ? 'var(--success, #10b981)' :
                     result.key.strength > 0.4 ? 'var(--brand)' : 'var(--text-muted)';
-  // 调性 sub: 双标注 + (可选) "Essentia 原判" 提示
+  const confidenceLabel = result.key.strength > 0.6 ? '较稳' : result.key.strength > 0.4 ? '可参考' : '仅供参考';
   const keySub = flipped
     ? `↔ ${essentiaKeyName} (原判)`
-    : (relativeName ? `关系调: ${relativeName}` : `置信 ${(result.key.strength * 100).toFixed(0)}%`);
+    : (relativeName ? `关系调: ${relativeName}` : `置信 ${keyStrength.toFixed(0)}%`);
 
   return (
-    <div className="card">
+    <div className="card listen-result-header">
       <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <Stat label="调性" value={primaryName} sub={keySub} color={confColor} />
         <Stat label="BPM" value={result.bpm > 0 ? result.bpm.toFixed(0) : '—'} sub="拍/分钟" />
         <Stat label="节拍数" value={`${result.ticks.length}`} sub={`和弦 ${result.beatChords.length}`} />
         <Stat label="耗时" value={`${(result.elapsedMs / 1000).toFixed(2)}s`} sub="分析时间" />
+      </div>
+      <div className="listen-result-note">
+        <div className="listen-result-note-title">结果如何使用</div>
+        <p>
+          调性与和弦是按整段音频估计出的练习参考，不是逐小节人工扒谱结果。
+          当前这次结果的调性判断 <b style={{ color: confColor }}>{confidenceLabel}</b>（{keyStrength.toFixed(0)}%），
+          更适合用来快速判断走向、挑 key、接着练伴奏，而不是直接当成最终定稿。
+        </p>
       </div>
       {relativeName && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 6 }}>

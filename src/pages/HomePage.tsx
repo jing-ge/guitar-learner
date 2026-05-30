@@ -30,6 +30,27 @@ const MODULE_CARDS = [
   },
 ] as const;
 
+const NEXT_ACTIONS = {
+  newbie: {
+    title: '先完成第一次练习',
+    desc: '从调音开始，接着做 5 题听音，再跟一条最简单的和弦走向。',
+    to: '/practice?start=newbie',
+    cta: '开始新手路径',
+  },
+  daily: {
+    title: '先做今日 5 分钟',
+    desc: '用一轮短练习把手感和耳朵都接起来，做完再自由探索。',
+    to: '/practice/daily',
+    cta: '开始今日套餐',
+  },
+  continue: {
+    title: '继续今天的练习',
+    desc: '先把今天的主线练完，再决定去补弱项还是去伴奏里玩起来。',
+    to: '/practice/daily',
+    cta: '回到今日套餐',
+  },
+} as const;
+
 function useInstallInfo() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -185,6 +206,12 @@ function HomePageInner() {
     navigate('/learn');
   };
 
+  const nextAction = !summary.hasAnyRecord
+    ? NEXT_ACTIONS.newbie
+    : summary.hasTodayRecord
+      ? NEXT_ACTIONS.continue
+      : NEXT_ACTIONS.daily;
+
   return (
     <div className="home-layout">
       <section className="hero-card">
@@ -242,22 +269,24 @@ function HomePageInner() {
         )}
       </section>
 
-      {dailySet.completedCount > 0 && (
-        <section className="daily-done-banner" aria-label="今日套餐完成">
-          <div className="ddb-icon" aria-hidden="true">✓</div>
-          <div className="ddb-body">
-            <div className="ddb-title">今日套餐已完成 × {dailySet.completedCount}</div>
-            <div className="ddb-sub">
-              最近一次 {Math.floor(dailySet.lastSeconds / 60)}:{String(dailySet.lastSeconds % 60).padStart(2, '0')}
-              {dailySet.lastScore < 3 && ` · 跳过了 ${3 - dailySet.lastScore} 步`}
-            </div>
-          </div>
-          <button className="btn btn-sm" onClick={() => navigate('/practice/daily')}>再练</button>
-        </section>
-      )}
+      <section className="recommend-card primary-path-card">
+        <div className="card-kicker">今日主线</div>
+        <h2>{nextAction.title}</h2>
+        <p>{nextAction.desc}</p>
+        <div className="primary-path-actions">
+          <Link to={nextAction.to} className="btn btn-primary" style={{ textDecoration: 'none' }}>
+            {nextAction.cta}
+          </Link>
+          {dailySet.completedCount > 0 && (
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/practice/daily')}>
+              今日已完成 × {dailySet.completedCount}
+            </button>
+          )}
+        </div>
+      </section>
 
       <section className="recommend-card">
-        <div className="card-kicker">今日推荐任务</div>
+        <div className="card-kicker">做完主线后</div>
         <h2>{recommendText}</h2>
         {savedToPractice ? (
           <button className="btn btn-primary" onClick={handlePracticeSaved}>
@@ -295,8 +324,9 @@ function HomePageInner() {
         </section>
       )}
 
-      <section>
-        <div className="section-title">继续探索</div>
+      <section className="card home-secondary-card">
+        <div className="section-title section-tight">继续探索</div>
+        <p className="home-secondary-copy">主线完成后，再去学新知识、补训练，或进伴奏把今天的手感接上。</p>
         <div className="home-grid home-grid-modules">
           {MODULE_CARDS.map((card) => (
             <Link key={card.to} to={card.to} className={`module-card module-card-${card.hub}`}>
@@ -310,7 +340,7 @@ function HomePageInner() {
         </div>
       </section>
 
-      <section className="card">
+      <section className="card home-secondary-card">
         <div className="section-title section-tight">30 天打卡</div>
         <div className="heat-strip">
           {heatmapDays.map((day) => (

@@ -403,9 +403,9 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
               {isCur && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, background: 'rgba(255,255,255,0.06)', pointerEvents: 'none' }}><div style={{ width: `${progress}%`, height: '100%', background: secDef.color, transition: 'width .12s linear' }} /></div>}
               <div style={{ paddingLeft: isCur ? 22 : 0, transition: 'padding .18s', display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-                  <select value={sec.kind} onChange={e => updateSec(i, { kind: e.target.value as SectionKind })} style={{ flex: '0 0 76px', padding: 4, fontSize: 12, fontWeight: isCur ? 700 : 400, color: isCur ? secDef.color : undefined }} className="select">{(['intro','verse','chorus','bridge','outro'] as SectionKind[]).map(k => <option key={k} value={k}>{SECTION_DEFAULTS[k].label}</option>)}</select>
-                  <select value={sec.patternId} onChange={e => updateSec(i, { patternId: e.target.value })} style={{ flex: 1, minWidth: 0, padding: 4, fontSize: 12 }} className="select">{allPatterns.map(p => <option key={p.id} value={p.id}>{(p as CustomDrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
-                  <input type="number" min={1} max={16} value={sec.bars} onChange={e => updateSec(i, { bars: Math.max(1, Math.min(16, +e.target.value || 1)) })} style={{ width: 48, padding: 4, fontSize: 12, textAlign: 'center' }} className="select" />
+                  <select value={sec.kind} onChange={e => updateSec(i, { kind: e.target.value as SectionKind })} style={{ flex: '0 0 88px', padding: '0 28px 0 8px', height: 34, minHeight: 34, fontSize: 12, fontWeight: isCur ? 700 : 400, color: isCur ? secDef.color : undefined }} className="select">{(['intro','verse','chorus','bridge','outro'] as SectionKind[]).map(k => <option key={k} value={k}>{SECTION_DEFAULTS[k].label}</option>)}</select>
+                  <select value={sec.patternId} onChange={e => updateSec(i, { patternId: e.target.value })} style={{ flex: 1, minWidth: 0, padding: '0 28px 0 8px', height: 34, minHeight: 34, fontSize: 12 }} className="select">{allPatterns.map(p => <option key={p.id} value={p.id}>{(p as CustomDrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
+                  <input type="number" min={1} max={16} value={sec.bars} onChange={e => updateSec(i, { bars: Math.max(1, Math.min(16, +e.target.value || 1)) })} style={{ width: 52, padding: '0 8px', height: 34, minHeight: 34, fontSize: 12, textAlign: 'center' }} className="select" />
                   <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 2, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.fillLast} onChange={e => updateSec(i, { fillLast: e.target.checked })} />加花</label>
                   <button className="btn btn-sm" onClick={() => moveSec(i, -1)} disabled={i === 0}>↑</button>
                   <button className="btn btn-sm" onClick={() => moveSec(i, 1)} disabled={i === song.length - 1}>↓</button>
@@ -415,9 +415,9 @@ function SongArranger({ allPatterns, allProgressions, allStrums, allBass }: { al
                   <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playDrum ?? true} onChange={e => updateSec(i, { playDrum: e.target.checked })} />🥁</label>
                   <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playChord ?? false} onChange={e => updateSec(i, { playChord: e.target.checked })} />🎸</label>
                   <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)' }}><input type="checkbox" checked={sec.playBass ?? false} onChange={e => updateSec(i, { playBass: e.target.checked })} />🎸</label>
-                  <select value={sec.progressionId ?? ''} onChange={e => updateSec(i, { progressionId: e.target.value || undefined })} style={{ padding: 2, fontSize: 10, height: 26 }} className="select" title="和弦走向"><option value="">🎵 和弦走向</option>{allProgressions.map(p => <option key={p.id} value={p.id}>🎵 {(p as CustomChordProgression).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
-                  <select value={sec.strumPatternId ?? 'whole'} onChange={e => updateSec(i, { strumPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: 3, fontSize: 11, height: 28 }} className="select" title="吉他节奏">{allStrums.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomChordStrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
-                  <select value={sec.bassPatternId ?? 'root-only'} onChange={e => updateSec(i, { bassPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: 3, fontSize: 11, height: 28 }} className="select" title="贝斯节奏">{allBass.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomBassPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
+                  <select value={sec.progressionId ?? ''} onChange={e => updateSec(i, { progressionId: e.target.value || undefined })} style={{ padding: '0 24px 0 8px', fontSize: 10, height: 30, minHeight: 30 }} className="select" title="和弦走向"><option value="">🎵 和弦走向</option>{allProgressions.map(p => <option key={p.id} value={p.id}>🎵 {(p as CustomChordProgression).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
+                  <select value={sec.strumPatternId ?? 'whole'} onChange={e => updateSec(i, { strumPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: '0 26px 0 8px', fontSize: 11, height: 30, minHeight: 30 }} className="select" title="吉他节奏">{allStrums.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomChordStrumPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
+                  <select value={sec.bassPatternId ?? 'root-only'} onChange={e => updateSec(i, { bassPatternId: e.target.value })} style={{ flex: 1, minWidth: 90, padding: '0 26px 0 8px', fontSize: 11, height: 30, minHeight: 30 }} className="select" title="贝斯节奏">{allBass.map(p => <option key={p.id} value={p.id}>🎸 {(p as CustomBassPattern).custom ? '⭐ ' : ''}{p.name}</option>)}</select>
                 </div>
               </div>
             </div>
@@ -667,12 +667,14 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, padding: '8px 10px', background: 'var(--bg-soft)', borderRadius: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>首调</span>
             <select
-              style={{ fontSize: 12, padding: '4px 8px', height: 28, borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--bg)', color: 'var(--text-strong)' }}
+              className="select"
+              style={{ fontSize: 12, padding: '0 28px 0 10px', height: 32, minHeight: 32, borderRadius: 8, background: 'var(--bg)', color: 'var(--text-strong)' }}
               value={editing.key ?? 'C'} onChange={e => updateEditing({ key: e.target.value })}>
               {['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map(k => <option key={k} value={k}>{k}</option>)}
             </select>
             <select
-              style={{ fontSize: 12, padding: '4px 8px', height: 28, borderRadius: 6, border: '1px solid var(--line-soft)', background: 'var(--bg)', color: 'var(--text-strong)' }}
+              className="select"
+              style={{ fontSize: 12, padding: '0 28px 0 10px', height: 32, minHeight: 32, borderRadius: 8, background: 'var(--bg)', color: 'var(--text-strong)' }}
               value={editing.mode ?? 'major'} onChange={e => updateEditing({ mode: e.target.value as 'major'|'minor' })}>
               <option value="major">大调</option>
               <option value="minor">小调</option>

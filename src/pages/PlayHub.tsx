@@ -31,20 +31,50 @@ export default function PlayHub() {
     };
   }, [mode]);
 
-  const ENTRY_CARDS: { key: Exclude<PlayMode, 'menu'>; icon: PlayIcon; label: string; desc: string; tag?: string }[] = [
-    { key: 'play-song', icon: 'song',        label: '歌曲合奏', desc: '选段落、选鼓+和弦+贝斯，一键合奏。' },
-    { key: 'lib-drum',  icon: 'drum',        label: '鼓机节奏', desc: '编辑自定义鼓机节奏型。', tag: counts ? `${counts.drum} 个自定义` : undefined },
-    { key: 'lib-chord', icon: 'progression', label: '和弦走向', desc: '编辑自定义和弦走向。',   tag: counts ? `${counts.chord} 个自定义` : undefined },
-    { key: 'lib-strum', icon: 'strum',       label: '吉他节奏', desc: '编辑吉他扫弦/分解节奏型。', tag: counts ? `${counts.strum} 个自定义` : undefined },
-    { key: 'lib-bass',  icon: 'bass',        label: '贝斯节奏', desc: '编辑贝斯走句节奏型。',   tag: counts ? `${counts.bass} 个自定义` : undefined },
+  const primaryEntry: { key: Exclude<PlayMode, 'menu'>; icon: PlayIcon; label: string; desc: string; tag: string } = {
+    key: 'play-song',
+    icon: 'song',
+    label: '立即开弹',
+    desc: '选一组段落和伴奏，直接把今天练的和弦与节奏弹起来。',
+    tag: '主入口',
+  };
+
+  const libraryEntries: { key: Exclude<PlayMode, 'menu'>; icon: PlayIcon; label: string; desc: string; tag?: string }[] = [
+    { key: 'lib-drum',  icon: 'drum',        label: '鼓机节奏库', desc: '挑一个 groove 或编辑你自己的鼓机 pattern。', tag: counts ? `${counts.drum} 个自定义` : undefined },
+    { key: 'lib-chord', icon: 'progression', label: '和弦走向库', desc: '挑常见和弦进行，或保存你常练的走向。', tag: counts ? `${counts.chord} 个自定义` : undefined },
+    { key: 'lib-strum', icon: 'strum',       label: '吉他节奏库', desc: '选择扫弦或分解型，让右手节奏更快接上。', tag: counts ? `${counts.strum} 个自定义` : undefined },
+    { key: 'lib-bass',  icon: 'bass',        label: '贝斯节奏库', desc: '给和弦进行补一条低频走句，让合奏更完整。', tag: counts ? `${counts.bass} 个自定义` : undefined },
   ];
 
   if (mode === 'menu') {
     return (
       <div className="practice-hub-menu">
-        <div className="section-title section-tight">伴奏中心</div>
+        <div className="card play-hub-intro">
+          <div className="card-kicker">先玩起来</div>
+          <h2>先用一套现成伴奏开弹，再决定要不要细调资源。</h2>
+          <p>上面是立即使用入口，下面四项是你平时会复用的鼓机、和弦和节奏库。</p>
+        </div>
+
+        <div className="section-title section-tight">立即开弹</div>
+        <button
+          className="module-menu-card play-entry-card play-entry-primary"
+          onClick={() => setMode(primaryEntry.key)}
+        >
+          <div className="entry-card-icon" aria-hidden="true">
+            <Icon name={primaryEntry.icon} size={24} />
+          </div>
+          <div className="entry-card-body">
+            <div className="menu-card-title">{primaryEntry.label}</div>
+            <p>{primaryEntry.desc}</p>
+          </div>
+          <span className="menu-card-tag">
+            {primaryEntry.tag} <Icon name="arrow-right" size={14} strokeWidth={2} style={{ marginLeft: 2 }} />
+          </span>
+        </button>
+
+        <div className="section-title">编辑与复用资源</div>
         <div className="practice-entry-list">
-          {ENTRY_CARDS.map((entry) => (
+          {libraryEntries.map((entry) => (
             <button
               key={entry.key}
               className="module-menu-card play-entry-card"
@@ -61,7 +91,7 @@ export default function PlayHub() {
                 <p>{entry.desc}</p>
               </div>
               <span className="menu-card-tag">
-                进入 <Icon name="arrow-right" size={14} strokeWidth={2} style={{ marginLeft: 2 }} />
+                进入资源库 <Icon name="arrow-right" size={14} strokeWidth={2} style={{ marginLeft: 2 }} />
               </span>
             </button>
           ))}

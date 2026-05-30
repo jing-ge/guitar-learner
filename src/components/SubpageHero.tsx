@@ -4,17 +4,19 @@ type Props = {
   eyebrow?: string;
   title: string;
   desc?: string;
+  meta?: string;
   rightSlot?: ReactNode;
   children?: ReactNode;
 };
 
-export default function SubpageHero({ eyebrow, title, desc, rightSlot, children }: Props) {
+export default function SubpageHero({ eyebrow, title, desc, meta, rightSlot, children }: Props) {
   return (
     <div className="subpage-hero">
       {rightSlot && <div className="sh-right">{rightSlot}</div>}
       {eyebrow && <div className="sh-eyebrow">{eyebrow}</div>}
       <div className="sh-title">{title}</div>
       {desc && <div className="sh-desc">{desc}</div>}
+      {meta && <div className="sh-meta">{meta}</div>}
       {children}
     </div>
   );
