@@ -123,6 +123,8 @@ export default function PitchTrainerPage() {
   const [currentMidi, setCurrentMidi] = useState<number | null>(null);
   const [hitProgress, setHitProgress] = useState(0); // 0-1, 当前命中状态保持的比例
   const [taskFeedback, setTaskFeedback] = useState<'idle' | 'hit' | 'near' | 'miss'>('idle');
+  // Round 68 · M4 — 局部连续命中计数 (score === 1 才算 hit, 0.5/0 归零), 仅本次进入页面有效
+  const [streak, setStreak] = useState(0);
 
   const startTimeRef = useRef<number>(0);
   const questionStartRef = useRef<number>(0);
@@ -212,6 +214,8 @@ export default function PitchTrainerPage() {
     else vibratePattern([30, 50, 30]);
 
     setTaskFeedback(score === 1 ? 'hit' : score === 0.5 ? 'near' : 'miss');
+    // Round 68 · M4 — streak: 仅 score===1 (完全命中) 累加, 其余归零
+    setStreak(s => score === 1 ? s + 1 : 0);
     setResults(prev => {
       const next = [...prev, {
         q: currentQuestion,
@@ -267,6 +271,7 @@ export default function PitchTrainerPage() {
     nearStartRef.current = 0;
     committedRef.current = false;  // R67: 新一组从未 commit 开始
     muteUntilRef.current = 0;
+    setStreak(0);  // Round 68 · M4 — 新一组从 0 起步
     questionStartRef.current = performance.now();
     startTimeRef.current = performance.now();
     recordedRef.current = false;
@@ -392,6 +397,25 @@ export default function PitchTrainerPage() {
         <section className="card daily-step-card">
           <div className="card-kicker">
             音准训练 · {mode === 'pluck' ? '弹准' : '唱准'} · 剩 {remaining} / {TOTAL_QUESTIONS}
+            {/* Round 68 · M4 — streak (≥2 才显示) */}
+            {streak >= 2 && (
+              <span
+                aria-label={`连续命中 ${streak} 题`}
+                style={{
+                  marginLeft: 8,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  background: 'rgba(245,158,11,0.14)',
+                  color: 'var(--brand-strong, #f59e0b)',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  verticalAlign: 'middle',
+                }}
+              >🔥 {streak}</span>
+            )}
           </div>
           <h2 style={{ textAlign: 'center', margin: '8px 0 4px', fontSize: 26 }}>
             {currentQuestion?.label ?? '-'}

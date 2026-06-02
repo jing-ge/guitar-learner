@@ -7,6 +7,30 @@ import MicPermissionState, { type MicPermState } from '../components/MicPermissi
 import SubpageHero from '../components/SubpageHero';
 import { vibrate, vibratePattern } from '../utils/haptic';
 
+// Round 68 · M1 — 校准偏移记忆 (localStorage 持久化 ±cent 微调偏好)
+// 用户在仪表盘旁微调 ±cents 后, 下次再打开调音器仍保留偏好, 省去每次重设
+const CALIBRATION_OFFSET_KEY = 'gl_tuner_calibration_offset_v1';
+const CALIBRATION_OFFSET_MAX = 50; // ±50 cents, 与仪表盘量程一致
+
+function loadCalibrationOffset(): number {
+  try {
+    const raw = localStorage.getItem(CALIBRATION_OFFSET_KEY);
+    if (!raw) return 0;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(-CALIBRATION_OFFSET_MAX, Math.min(CALIBRATION_OFFSET_MAX, Math.round(n)));
+  } catch {
+    return 0;
+  }
+}
+
+function saveCalibrationOffset(n: number): void {
+  try {
+    const clamped = Math.max(-CALIBRATION_OFFSET_MAX, Math.min(CALIBRATION_OFFSET_MAX, Math.round(n)));
+    localStorage.setItem(CALIBRATION_OFFSET_KEY, String(clamped));
+  } catch {}
+}
+
 // 标准调弦 6 弦（按弦序 6→1 排列，UI 网格也按这个顺序）
 const STRINGS = [
   { stringNo: 6, name: 'E2', noteOnly: 'E', label: '6弦 E', midi: 40, freq: 82.41 },
@@ -42,6 +66,11 @@ export default function TunerPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   /** 每弦最近一次 cents（绝对值大于 15 时显示偏差警告） */
   const [perStringCents, setPerStringCents] = useState<Record<number, number>>({});
+  // Round 68 · M1 — 校准偏移 (持久化), 用户的 ±cents 微调偏好, 影响所有 cents 计算
+  const [calibrationOffset, setCalibrationOffset] = useState<number>(() => loadCalibrationOffset());
+
+  // M1: 持久化变化
+  useEffect(() => { saveCalibrationOffset(calibrationOffset); }, [calibrationOffset]);
 
   // 进度记录相关
   const recordedRef = useRef(false);
@@ -66,9 +95,9 @@ export default function TunerPage() {
       ? STRINGS.reduce((best, s) => Math.abs(s.midi - pitch.midi) < Math.abs(best.midi - pitch.midi) ? s : best, STRINGS[0])
       : null;
 
-  // 相对于目标弦的偏差
+  // 相对于目标弦的偏差（M1: 减去用户校准偏移）
   const centsFromTarget = pitch && targetString
-    ? Math.round(1200 * Math.log2(pitch.freq / midiToFreq(targetString.midi)))
+    ? Math.round(1200 * Math.log2(pitch.freq / midiToFreq(targetString.midi))) - calibrationOffset
     : 0;
 
   const inTune = !!(pitch && Math.abs(centsFromTarget) <= 5);
@@ -96,7 +125,7 @@ export default function TunerPage() {
       if (result && tgt) {
         const cents = Math.round(
           1200 * Math.log2(result.freq / midiToFreq(tgt.midi))
-        );
+        ) - calibrationOffsetRef.current;
         // 全局 tuner session 记录（首次 in-tune 3 帧后记 tuner）
         if (Math.abs(cents) <= 5) {
           inTuneStableRef.current++;
@@ -154,6 +183,9 @@ export default function TunerPage() {
   // targetString 通过 ref 给回调读
   const targetStringRef = useRef(targetString);
   useEffect(() => { targetStringRef.current = targetString; }, [targetString]);
+  // M1: calibrationOffset 通过 ref 给回调读, 避免每次改动重启 detector
+  const calibrationOffsetRef = useRef(calibrationOffset);
+  useEffect(() => { calibrationOffsetRef.current = calibrationOffset; }, [calibrationOffset]);
 
   const stopListen = useCallback(() => {
     pitchDetector.stop();
@@ -238,6 +270,57 @@ export default function TunerPage() {
       />
 
       <MicPermissionState state={micState} onRetry={startListen} />
+
+      {/* Round 68 · M1 — 校准偏移微调（持久化） */}
+      <div
+        className="tuner-calibration"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          margin: '4px 0 12px',
+          fontSize: 12,
+          color: 'var(--text-muted)',
+        }}
+      >
+        <span style={{ marginRight: 4 }}>校准偏移</span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setCalibrationOffset(v => Math.max(-CALIBRATION_OFFSET_MAX, v - 1))}
+          aria-label="校准偏移 -1 cent"
+          style={{ minWidth: 32, padding: '2px 8px' }}
+        >−1</button>
+        <span
+          aria-live="polite"
+          style={{
+            minWidth: 60,
+            textAlign: 'center',
+            fontFamily: 'monospace',
+            color: calibrationOffset !== 0 ? 'var(--brand)' : 'var(--text-muted)',
+            fontWeight: calibrationOffset !== 0 ? 700 : 400,
+          }}
+        >
+          {calibrationOffset > 0 ? '+' : ''}{calibrationOffset} ¢
+        </span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setCalibrationOffset(v => Math.min(CALIBRATION_OFFSET_MAX, v + 1))}
+          aria-label="校准偏移 +1 cent"
+          style={{ minWidth: 32, padding: '2px 8px' }}
+        >+1</button>
+        {calibrationOffset !== 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setCalibrationOffset(0)}
+            aria-label="重置校准偏移"
+            style={{ marginLeft: 4, padding: '2px 8px' }}
+          >重置</button>
+        )}
+      </div>
 
       {/* 启动按钮 */}
       <div style={{ textAlign: 'center', marginBottom: 14 }}>

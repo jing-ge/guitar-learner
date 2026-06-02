@@ -3594,3 +3594,79 @@ ListenPage 黄绿渐变 (与 brand 不协调) → red gradient (`#FF6B6B → #DC
 **EAS APK build**: pending (本轮 commit 后触发)
 
 
+---
+
+### Round 68 — 2026-06-02 · 三组件聚焦完善（②音频 §A2 零产出 + ③≤3 微增量 + ④UI Audit 延后）
+
+**流水线产物**：本轮走 deep-interview → ralplan → autopilot 三阶段流水线，spec/plan 均以 `pending approval` 显式批准后落地。
+
+- spec: `.omc/specs/deep-interview-guitar-learner-polish.md`（ambiguity 11%，PASSED）
+- plan: `.omc/plans/consensus-guitar-learner-polish.md`（Architect 36/40 + Critic 55/60，APPROVE）
+- Phase 1 静态扫查报告: `.omc/state/phase1-audio-static-audit.md`
+
+#### ②音频引擎深化 — §A2 零产出合规分支
+
+按 plan Phase 1 早期决议门（必改 2）的判定逻辑：30 分钟静态扫查后**未发现**任何同时满足「不动公共 API + 不动 essentia dynamic import 形态 + 触达异常路径 + 本地 eval 不回退」三条件的低风险加固候选。本轮按 plan §A2 修订版走「已审阅清单 + 风险评估 + 复核结论」合规交付物分支：
+
+- **审阅覆盖**：17/17 模块（14 完整 + 3 头扫，共 4228 行核心 + 数据模块）
+- **核心模块复核**：`chord-detector.ts`（796 行）、`pitch-detector.ts`、`essentia-engine.ts`、`melodyPostprocess.ts`、`melodyToFretboard.ts`、`rhythmScorer.ts`、`recordingStore.ts` 等关键路径异常处理均已在历史 round（R46/R50.2/R55 A4/R55 A5/R64）修复，本轮**保持 baseline 不动**
+- **结论**：下一轮可考虑专项音频精度提升立项（fft 窗口 / chord-detector 模板数量切换 等）
+
+#### ③微增量扩展 — 落地 M1 + M4（≤3 上限用 2 名额）
+
+**勾选过程透明记录**：候选清单 5 项（M1/M2/M3/M4/M6）；M5（DrumMachine Pattern 文本协议）在 plan v2 必改 4 中已标「高复杂度，建议剔除」未列入。用户初选 M1+M2+M3+M4+M6 → 触发 ≤3 硬上限拦截 → 收窄到 M1+M2+M4 → 落地实现前发现 **M2 已被 HomePage `dailySet.completedCount` 徽章覆盖**（按 plan R5 + Karpathy「不重构能跑的代码」剔除，不替补）→ 最终落地 **M1 + M4** 共 2 项。
+
+**M1 — TunerPage 校准偏移记忆**（`src/pages/TunerPage.tsx`，单文件）
+- 新增 `localStorage` 键 `gl_tuner_calibration_offset_v1`，持久化 ±50 cents 微调偏好
+- 仪表盘下方新增「−1 / 数值 / +1 / 重置」微调控件，aria-label 完整
+- 所有 cents 计算（仪表盘 + 每弦稳定判定）均减去 calibration offset
+- 通过 ref 把 offset 传给 detector 回调，**避免重启 detector**（沿用 R46 防 Android WebView mic 死锁的相同模式）
+- 公共 API 无破坏；不动 `audio-ctx.ts` / detector / synth
+
+**M4 — ChordEar + PitchTrainer 连续命中计数**（`src/pages/ChordEarTrainerPage.tsx`、`src/pages/PitchTrainerPage.tsx`，跨 2 文件同模式，本地 state）
+- ChordEar：答对 streak +1，答错归零；进度条右侧 `≥ 2` 时显示「🔥 N」徽章
+- PitchTrainer：score===1（完全命中 |cents|≤15 持 500ms）streak +1，0.5/0 归零；卡顶 kicker 行 `≥ 2` 时显示徽章
+- 仅本次进入页面有效，**不持久化**（spec §B DoD：streak 不跨 session）
+- 重新开始一组（`startQuiz` / `commitResult` 切下一题）时归零，逻辑边界覆盖完整
+
+**砍掉 M2/M3/M5/M6 的理由（透明记录）**：
+- M2：HomePage 已经在 `dailySet.completedCount` 显示徽章，重做即重构能跑的代码
+- M3 / M5 / M6：超出本轮 ≤3 硬上限；M5 越界「微」语义
+- 下一轮可专项考虑 M3（拍点可视化）/ M6（ListenPage 历史 ring buffer），M5 需独立立项
+
+#### ④UI/UX 精修 — 静态扫查 + 完整 audit + 双主题目视均**延后到独立轮次**
+
+按 plan / spec 设计，UI Audit 6 维 checklist 中 D3（点击区 dp）、D4（动效）、D5（运行时空状态）必须**运行时人眼**核查；§C4 双主题人工目视也是 plan 必改 1 的强约束。autopilot 不代行这些环节，避免产出"假装通过"的 audit 报告。
+
+#### 收尾验证（R10 / R9 缓解逐条执行）
+
+- `npx tsc -b` ✅ TS strict 通过
+- `npm run build` ✅ inline-dist 输出 535.2 KB，`script tag pairing OK`，`import.meta check: present (module script ✓)`
+- `npm run build:apk` ✅ inline-dist 输出 3025.4 KB（含 essentia inline），`script tag pairing OK` + `import.meta check: present (module script ✓)`
+- `npm run eval:check` ✅ **6/6 场景 +0.00pp**，baseline 零回退（plan §A1 满足）
+- **R9 dist/index.html 二次目视**（人工 grep 校验）：
+  - `<script type="module">` × 1 + `</script>` × 1 → **正确配对**（无泄漏的 `<\/script>` escape，避免 R49.5 / R50.1 同源复发）
+  - `import.meta.url` 仅出现 1 次且在 module script 内（合法），无 R50.2 同源风险
+
+#### 守住的 Non-Goals
+
+- 不补单元/E2E 测试，不加 CI（①延后）
+- 不动音频核心算法参数（②走零产出分支）
+- 不新增 Route / Tab / Hub 入口卡片（M1/M4 落点严格在现有 page 内）
+- 不引入新运行时依赖
+- 不动 `native/` / `vite.config.ts` / `tsconfig.json` / `package.json` / `capture-screenshots.mjs`
+- 不性能优化（⑤延后，Round 4 Contrarian 后用户确认无具体痛点）
+- 不补 CONTRIBUTING / release 流程（⑥延后）
+
+#### 受影响文件
+
+- `src/pages/TunerPage.tsx`（M1）
+- `src/pages/ChordEarTrainerPage.tsx`（M4-a）
+- `src/pages/PitchTrainerPage.tsx`（M4-b）
+- `docs/CHANGELOG.md`（本段）
+- `.omc/specs/deep-interview-guitar-learner-polish.md`（spec 留档）
+- `.omc/plans/consensus-guitar-learner-polish.md`（plan 留档）
+- `.omc/state/phase1-audio-static-audit.md`（音频审阅清单）
+
+
+

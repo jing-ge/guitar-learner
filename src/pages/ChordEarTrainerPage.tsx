@@ -144,6 +144,8 @@ export default function ChordEarTrainerPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [replayCount, setReplayCount] = useState(0);
   const [revealed, setRevealed] = useState<{ correct: boolean; userPickedId: string } | null>(null);
+  // Round 68 · M4 — 局部连续答对计数 (streak), 仅本次进入页面有效, 答错归零
+  const [streak, setStreak] = useState(0);
 
   const startTimeRef = useRef<number>(0);
   const autoNextTimerRef = useRef<number | null>(null);
@@ -176,6 +178,7 @@ export default function ChordEarTrainerPage() {
     setCurrentIdx(0);
     setReplayCount(0);
     setRevealed(null);
+    setStreak(0);   // Round 68 · M4 — 新一组从 0 起步
     startTimeRef.current = performance.now();
     setStep('task');
   }, []);
@@ -196,6 +199,8 @@ export default function ChordEarTrainerPage() {
     if (!currentQuestion || revealed) return;  // 已揭晓则忽略
     const correct = pickedId === currentQuestion.answerId;
     setRevealed({ correct, userPickedId: pickedId });
+    // Round 68 · M4 — streak: 答对累加, 答错归零
+    setStreak(s => correct ? s + 1 : 0);
     if (correct) {
       vibrate(20);
       // 答对：1.2s 后自动下一题
@@ -377,8 +382,27 @@ export default function ChordEarTrainerPage() {
           <span style={{ color: 'var(--text-muted)' }}>
             第 {currentIdx + 1} / {TOTAL_QUESTIONS} 题
           </span>
-          <span style={{ color: 'var(--text-muted)' }}>
-            {DIFFICULTY_LABEL[difficulty].label} · {DIFFICULTY_LABEL[difficulty].count}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Round 68 · M4 — streak (≥2 才显示) */}
+            {streak >= 2 && (
+              <span
+                aria-label={`连续答对 ${streak} 题`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  background: 'rgba(245,158,11,0.14)',
+                  color: 'var(--brand-strong, #f59e0b)',
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >🔥 {streak}</span>
+            )}
+            <span style={{ color: 'var(--text-muted)' }}>
+              {DIFFICULTY_LABEL[difficulty].label} · {DIFFICULTY_LABEL[difficulty].count}
+            </span>
           </span>
         </div>
         <div style={{
