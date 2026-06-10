@@ -256,8 +256,8 @@ export default function TunerPage() {
   }
 
   // ===== tunedSet 视图（依赖 tunedTick 强制刷新） =====
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _tick = tunedTick;
+  // 读一下 tunedTick 即可让 React 把它当依赖，触发重渲染
+  void tunedTick;
   const tunedSet = tunedSetRef.current;
 
   return (
@@ -290,7 +290,7 @@ export default function TunerPage() {
           className="btn btn-ghost btn-sm"
           onClick={() => setCalibrationOffset(v => Math.max(-CALIBRATION_OFFSET_MAX, v - 1))}
           aria-label="校准偏移 -1 cent"
-          style={{ minWidth: 32, padding: '2px 8px' }}
+          style={{ minWidth: 40, minHeight: 36, padding: '6px 10px' }}
         >−1</button>
         <span
           aria-live="polite"
@@ -309,7 +309,7 @@ export default function TunerPage() {
           className="btn btn-ghost btn-sm"
           onClick={() => setCalibrationOffset(v => Math.min(CALIBRATION_OFFSET_MAX, v + 1))}
           aria-label="校准偏移 +1 cent"
-          style={{ minWidth: 32, padding: '2px 8px' }}
+          style={{ minWidth: 40, minHeight: 36, padding: '6px 10px' }}
         >+1</button>
         {calibrationOffset !== 0 && (
           <button
@@ -317,14 +317,18 @@ export default function TunerPage() {
             className="btn btn-ghost btn-sm"
             onClick={() => setCalibrationOffset(0)}
             aria-label="重置校准偏移"
-            style={{ marginLeft: 4, padding: '2px 8px' }}
+            style={{ marginLeft: 4, minHeight: 36, padding: '6px 10px' }}
           >重置</button>
         )}
       </div>
 
       {/* 启动按钮 */}
       <div style={{ textAlign: 'center', marginBottom: 14 }}>
-        <button className={'btn ' + (active ? '' : 'btn-primary')} style={{ width: 200 }} onClick={toggleTuner}>
+        <button
+          className={'btn ' + (active ? '' : 'btn-primary')}
+          style={{ width: active ? 200 : 280, maxWidth: '100%' }}
+          onClick={toggleTuner}
+        >
           {active ? '■ 停止调音' : '🎤 开始调音'}
         </button>
       </div>

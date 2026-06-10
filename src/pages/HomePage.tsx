@@ -219,20 +219,22 @@ function HomePageInner() {
         <h1>{summary.hasAnyRecord ? '今日练什么' : '从这里开始'}</h1>
         <p>{primaryAction.helper}</p>
 
-        <div className="hero-stats">
-          <div className="stat-pill">
-            <span>分钟</span>
-            <strong>{summary.hasAnyRecord ? Math.floor(today.totalSeconds / 60) : '—'}</strong>
+        {summary.hasAnyRecord && (
+          <div className="hero-stats">
+            <div className="stat-pill">
+              <span>分钟</span>
+              <strong>{Math.floor(today.totalSeconds / 60)}</strong>
+            </div>
+            <div className="stat-pill">
+              <span>答对</span>
+              <strong>{today.totalRight || 0}</strong>
+            </div>
+            <div className="stat-pill">
+              <span>连续天数</span>
+              <strong>{summary.streak > 0 ? summary.streak : '—'}</strong>
+            </div>
           </div>
-          <div className="stat-pill">
-            <span>答对</span>
-            <strong>{summary.hasAnyRecord ? (today.totalRight || 0) : '—'}</strong>
-          </div>
-          <div className="stat-pill">
-            <span>连续天数</span>
-            <strong>{summary.streak > 0 ? summary.streak : (summary.hasAnyRecord ? '—' : '0')}</strong>
-          </div>
-        </div>
+        )}
 
         {summary.hasAnyRecord ? (
           <div className="hero-actions">

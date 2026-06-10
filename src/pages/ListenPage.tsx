@@ -316,6 +316,9 @@ export default function ListenPage() {
         try { recorder.stop(); } catch {}
       }
     }, 100);
+    // recordedSec 是 setState 的对象，加入依赖会让 useCallback 每次倒计时 100ms 重建，
+    // 进而触发 RecordingView 重挂载、波形清零
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duration, mode]);
 
   const stopRecording = useCallback(() => {
@@ -573,10 +576,15 @@ export default function ListenPage() {
         {/* 主按钮区 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 18, gap: 12 }}>
           {phase === 'idle' && (
-            <button onClick={startRecording} className="record-btn" aria-label="开始录音">
-              <span className="record-btn-icon"><Icon name="mic" size={36} strokeWidth={2} /></span>
-              <span className="record-btn-label">开始录音</span>
-            </button>
+            <>
+              <div className="listen-pre-hint" role="note">
+                💡 适合<b>节拍稳定、和声清楚</b>的流行/民谣片段；仅识别大三/小三主干和弦
+              </div>
+              <button onClick={startRecording} className="record-btn" aria-label="开始录音">
+                <span className="record-btn-icon"><Icon name="mic" size={36} strokeWidth={2} /></span>
+                <span className="record-btn-label">开始录音</span>
+              </button>
+            </>
           )}
 
           {phase === 'requesting' && (
@@ -697,15 +705,11 @@ export default function ListenPage() {
       )}
 
       <div className="card listen-expectation-card">
-        <p style={{ fontSize: 13 }}>💡 <b>更适合的使用方式</b>：对着手机播放结构清楚、节拍稳定的片段，或直接录自己弹的和弦进行。</p>
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           ⚙️ Essentia.js 先找节拍，再按 beat 切片识别和弦，所以它更擅长给你一个“这段大概在什么 key、走向怎么走”的快速参考。
         </p>
         <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          ⚠️ 当前版本更适合流行/民谣这类节拍稳定、和声清楚的段落；复杂和弦、密集编曲、转调或弱起片段，结果可能只适合当练习线索。
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          🎸 当前版本仅识别大三/小三主干和弦（Cmaj7 更可能识别为 C，Am7 更可能识别为 Am），所以更适合练走向和伴奏，不适合直接替代精细扒谱。
+          🎸 复杂和弦、密集编曲、转调或弱起片段，结果可能只适合当练习线索；当前版本仅识别大三/小三主干和弦（Cmaj7 更可能识别为 C，Am7 更可能识别为 Am）。
         </p>
       </div>
       </>}

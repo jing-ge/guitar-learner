@@ -123,6 +123,9 @@ export default function Fretboard({
       }
     }
     return list;
+    // fretCenterPos / stringPos 都是 props 派生的纯函数（每次渲染重建即可），
+    // 不需要进依赖数组；进了会让 useMemo 失效
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromFret, toFret, highlight, labelMode, vertical]);
 
   const handleClick = async (stringNum: 1|2|3|4|5|6, fret: number) => {

@@ -29,7 +29,7 @@
 
 - 🔌 **完全离线** —— 零后端、零账号、零网络请求,一次加载处处可用
 - 🎚️ **自研音频引擎** —— Web Audio API 物理建模合成吉他/贝斯/鼓机,**零采样包**
-- 🎧 **实时和弦识别** —— FFT + Chroma + 156 模板 + 状态机防抖,30+ 轮算法迭代
+- 🎧 **实时和弦识别** —— FFT + Chroma + 24 模板（大三/小三 × 12 根音）+ 状态机防抖,30+ 轮算法迭代
 - 🧠 **离线扒带** —— Essentia.js 一键出 BPM + 调性 + 节拍对齐和弦时间线 + 主旋律 MIDI
 - 🥁 **毫秒级精准节奏** —— Web Audio Lookahead Scheduler,锁屏/掉帧不漂移
 - 🎨 **设计系统化** —— CSS token + 22 个内联 SVG icon (零依赖) + 微交互, APK 跨厂商字形一致
@@ -92,13 +92,13 @@
 
 ### 🎯 练习中心 — 主动技能训练
 
-3 个入口卡片,综合训练再展开 10 个子项。
+3 个入口卡片,综合训练再展开 7 个子项。
 
 | 入口 | 用途 |
 |---|---|
 | 🎛️ **调音器** | 麦克风 + **YIN 自相关算法** · 6 弦自动识别/手动锁定 · ±50 cents 仪表盘 |
 | 🎧 **听歌识别**(Essentia.js) | 录音 10/20/30s → 离线分析 → 输出 BPM + 调性 + **节拍对齐和弦时间线** + 罗马数字 · 主旋律模式(≤15s)直接映射 **最低把位指板** · IndexedDB 持久化 20 条录音 |
-| 🎯 **综合训练** | 10 个子项 ↓ |
+| 🎯 **综合训练** | 7 个子项 ↓ |
 
 **综合训练子项:**
 | 类别 | 子训练 | 关键细节 |
@@ -197,7 +197,7 @@ guitar-learner/
 │   │   ├── bass-synth.ts        # 贝斯合成(80Hz 加厚)
 │   │   ├── drum-machine.ts      # 10 种鼓声纯合成
 │   │   ├── pitch-detector.ts    # YIN 自相关音高检测
-│   │   ├── chord-detector.ts    # FFT + Chroma + 156 模板 + 状态机
+│   │   ├── chord-detector.ts    # FFT + Chroma + 24 模板 + 状态机
 │   │   ├── essentia-engine.ts   # Essentia.js 离线扒带封装
 │   │   ├── melodyToFretboard.ts # MIDI → 最低把位推荐
 │   │   ├── recordingStore.ts    # IndexedDB 录音持久化
@@ -234,7 +234,7 @@ guitar-learner/
 <details>
 <summary><b>🎧 识别算法(每一步都有迭代)</b></summary>
 
-- **和弦检测**([`chord-detector.ts`](src/audio/chord-detector.ts), 796 行) — FFT 峰值 → 12 维 Chroma + 低频 bassChroma + HPS 抑制谐波 + **156 个模板** 余弦匹配 + 状态机(`idle → candidate → confirmed → committed`)+ hysteresis + 速率限制(≤2 chord/s)+ 同根三度族投票(`F#m / F#m7 / F#sus2` 视为一族)
+- **和弦检测**([`chord-detector.ts`](src/audio/chord-detector.ts), 796 行) — FFT 峰值 → 12 维 Chroma + 低频 bassChroma + HPS 抑制谐波 + **24 个模板**（大三/小三 × 12 根音）余弦匹配 + 状态机(`idle → candidate → confirmed → committed`)+ hysteresis + 速率限制(≤2 chord/s)+ 同根三度族投票(`F#m / F#m7 / F#sus2` 视为一族)
 - **3 档敏感度** — `strict` ~3s / `normal` ~1.7s / `loose` ~0.9s commit 阈值
 - **自适应处理** — 全局调音偏移自适应(±50 cents)· 自适应噪声地板(p10 估计)· onset 门控(防长按拖尾)· key-aware diatonic 模板先验 · top-K 候选 chip
 - **音高检测** — [`pitch-detector.ts`](src/audio/pitch-detector.ts) **YIN 自相关算法**,适合吉他单音
@@ -244,7 +244,7 @@ guitar-learner/
 <details>
 <summary><b>🧪 工程纪律</b></summary>
 
-- **算法可回归评测** — `scripts/` 内 5 个评测脚本,从合成 chroma 到真实 wav 4 个层级,[`eval-baseline.json`](scripts/eval-baseline.json) 锁死 156 模板 × 20 走向 × 4 场景 ABCD,改算法必须过 baseline gate
+- **算法可回归评测** — `scripts/` 内 5 个评测脚本,从合成 chroma 到真实 wav 4 个层级,[`eval-baseline.json`](scripts/eval-baseline.json) 锁死 24 模板 × 20 走向 × 4 场景 ABCD,改算法必须过 baseline gate
 - **录音持久化** — [`recordingStore.ts`](src/audio/recordingStore.ts) IndexedDB `Float32Array → Blob` 存 PCM + analysis JSON,跨 session 重听免重算
 - **Essentia WASM 懒加载** — ~2.5MB 单例,显式 `.delete()` C++ vector 防 mobile Safari 二次崩
 </details>

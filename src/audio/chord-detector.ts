@@ -56,21 +56,24 @@ export interface ChordDetectEvent {
 }
 
 // ---- Stability constants ----
-const SMOOTHING_WINDOW = 5;             // 帧平滑窗口
-const MIN_CONFIRM_FRAMES = 16;          // Round 46: 12 → 16 (~270ms 进 confirmed) 防止 candidate 太敏感导致一闪而过
-const EXIT_HOLD_FRAMES = 6;             // 跌破 exit ≥ 6 帧才允许切换
-const EXIT_THRESHOLD = 0.45;            // hysteresis 离开门槛
-const SILENCE_FRAMES = 8;
+// Round 65: rAF 改 30fps 后所有按帧计数的常量都减半，保持物理时间常数不变
+//   60fps × 1 帧 ≈ 16.7ms → 30fps × 1 帧 ≈ 33.3ms
+//   eval baseline 不受影响（脚本走离线 chroma，不经过 rAF 调度）
+const SMOOTHING_WINDOW = 3;             // 帧平滑窗口（原 5 / 60fps ≈ 83ms → 3 / 30fps ≈ 100ms）
+const MIN_CONFIRM_FRAMES = 8;           // ~270ms 进 confirmed（原 16 / 60fps）
+const EXIT_HOLD_FRAMES = 3;             // 跌破 exit ≥ ~100ms 才允许切换（原 6 / 60fps）
+const EXIT_THRESHOLD = 0.45;            // hysteresis 离开门槛（与帧率无关）
+const SILENCE_FRAMES = 4;               // ~133ms 判静音（原 8 / 60fps）
 
 // sensitivity 矩阵
 const SENSITIVITY: Record<DetectorSensitivity, { enter: number; minCommitPractice: number; minCommitLive: number }> = {
-  // Round 46: 重新拉开三档区分度（之前 round41 调小后三档差距 < 0.6s，体感无差异）
+  // Round 65: 30fps 降帧后帧计数减半，体感时间相同
   //   strict: 慢稳，仅在和弦持续 ~3s 才 commit，适合慢歌/低误识别
   //   normal: 中庸 ~1.7s
   //   loose:  快敏，~0.9s commit，适合快歌/高速识别（但误识别多）
-  strict: { enter: 0.72, minCommitPractice: 32, minCommitLive: 28 },
-  normal: { enter: 0.62, minCommitPractice: 20, minCommitLive: 18 },
-  loose:  { enter: 0.52, minCommitPractice: 12, minCommitLive: 10 },
+  strict: { enter: 0.72, minCommitPractice: 16, minCommitLive: 14 },
+  normal: { enter: 0.62, minCommitPractice: 10, minCommitLive: 9 },
+  loose:  { enter: 0.52, minCommitPractice: 6,  minCommitLive: 5 },
 };
 
 const MAX_CHORDS_PER_SECOND_PRACTICE = 2;  // Round 46: 3 → 2 防止快歌输出一大串
@@ -95,36 +98,9 @@ function familyKey(chord: ChordDef): string {
   return `${token}-${qFam}`;
 }
 
-/** 频率 → pitch class (0-11) */
-function freqToPc(freq: number): number {
-  const midi = Math.round(69 + 12 * Math.log2(freq / 440));
-  return ((midi % 12) + 12) % 12;
-}
-
-/** 计算和弦的 pitch class 集合 */
-function chordPitchClasses(chord: ChordDef): number[] {
-  const shape = chord.shapes[0];
-  const tuning = [40, 45, 50, 55, 59, 64]; // E2 A2 D3 G3 B3 E4
-  const pcs = new Set<number>();
-  for (let i = 0; i < 6; i++) {
-    const fret = shape.frets[i];
-    if (fret < 0) continue;
-    const midi = tuning[i] + fret;
-    pcs.add(((midi % 12) + 12) % 12);
-  }
-  return [...pcs];
-}
-
-/** 两个 pitch class 集合的匹配度 (F1 score) */
-function matchScore(detected: Set<number>, chordPcs: number[]): number {
-  if (detected.size === 0 || chordPcs.length === 0) return 0;
-  let hits = 0;
-  for (const pc of chordPcs) if (detected.has(pc)) hits++;
-  const recall = hits / chordPcs.length;
-  const precision = hits / detected.size;
-  if (recall + precision === 0) return 0;
-  return 2 * recall * precision / (recall + precision);
-}
+// Round 10 之前的旧算法 helper（freqToPc / chordPitchClasses / matchScore）已被
+// chroma + 模板余弦匹配替换，本轮收紧 noUnusedLocals 时一并移除。
+// 如需查看历史实现，参考 git log src/audio/chord-detector.ts。
 
 // ---- Round 10/11: chroma + 程序化模板匹配 ----
 
@@ -279,6 +255,8 @@ export class ChordDetector {
   private source: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
   private rafId = 0;
+  // Round 65: 30fps 节流，省 50% CPU；33ms 间隔
+  private lastTickTs = 0;
   private running = false;
   private eventCallback: ((evt: ChordDetectEvent) => void) | null = null;
   private freqBinCount = 0;
@@ -298,7 +276,6 @@ export class ChordDetector {
   private silenceFrames: number = 0;
   private justCommittedThisFrame: { chord: ChordDef; confidence: number; durationMs: number } | null = null;
   private recentCommitsTs: number[] = [];
-  private committedFlashUntil: number = 0;
   // Round 12: chroma EMA 平滑状态
   private smoothedChroma: number[] | null = null;
   // Round 16: tuning offset 估计状态
@@ -543,7 +520,6 @@ export class ChordDetector {
 
     let bestEntry: TemplateEntry | null = null;
     let bestSim = 0;       // 原始余弦相似度，用于阈值判定 + confidence
-    let bestAdjusted = 0;  // 含 key prior 的，用于排序
     // Round 19: 收集所有 hits 用于 top-K 候选输出
     const hits: Array<{ tpl: TemplateEntry; sim: number; adjusted: number }> = [];
     for (const tpl of CHORD_TEMPLATES_V2) {
@@ -586,7 +562,6 @@ export class ChordDetector {
       const famScore = entry.best.adjusted + 0.3 * entry.second;
       if (famScore > bestFamilyScore) {
         bestFamilyScore = famScore;
-        bestAdjusted = entry.best.adjusted;
         bestSim = entry.best.sim;
         bestEntry = entry.best.tpl;
       }
@@ -628,8 +603,14 @@ export class ChordDetector {
 
   private loop = () => {
     if (!this.running) return;
-    const raw = this.analyzeFrame();
-    this.processFrame(raw);
+    // Round 65: 30fps 节流。rAF 仍以浏览器原生节奏唤醒（多数 60fps），但跳过中间帧只跑奇数。
+    // 物理时间常数靠帧计数减半保持一致（见上方 *_FRAMES 常量）。
+    const now = performance.now();
+    if (now - this.lastTickTs >= 30) {
+      this.lastTickTs = now;
+      const raw = this.analyzeFrame();
+      this.processFrame(raw);
+    }
     this.rafId = requestAnimationFrame(this.loop);
   };
 
@@ -738,7 +719,6 @@ export class ChordDetector {
             confidence: avgConf,
             durationMs: heldMs,
           };
-          this.committedFlashUntil = now + 200;
         }
       }
     } else {

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { pitchDetector, type PitchResult } from '../audio/pitch-detector';
-import { fretToMidi, midiToFreq, midiToNoteName, SHARP_NAMES } from '../theory/notes';
+import { fretToMidi, midiToFreq, midiToNoteName } from '../theory/notes';
 import { synth } from '../audio/synth';
 import { recordSession } from '../utils/progress';
 import { vibrate, vibratePattern } from '../utils/haptic';
@@ -120,7 +120,6 @@ export default function PitchTrainerPage() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [currentCents, setCurrentCents] = useState<number | null>(null);
   const [currentNote, setCurrentNote] = useState<string>('-');
-  const [currentMidi, setCurrentMidi] = useState<number | null>(null);
   const [hitProgress, setHitProgress] = useState(0); // 0-1, 当前命中状态保持的比例
   const [taskFeedback, setTaskFeedback] = useState<'idle' | 'hit' | 'near' | 'miss'>('idle');
   // Round 68 · M4 — 局部连续命中计数 (score === 1 才算 hit, 0.5/0 归零), 仅本次进入页面有效
@@ -150,7 +149,6 @@ export default function PitchTrainerPage() {
     if (performance.now() < muteUntilRef.current) {
       setCurrentCents(null);
       setCurrentNote('-');
-      setCurrentMidi(null);
       hitStartRef.current = 0;
       nearStartRef.current = 0;
       setHitProgress(0);
@@ -161,7 +159,6 @@ export default function PitchTrainerPage() {
     if (!res || res.rms < MIN_RMS) {
       setCurrentCents(null);
       setCurrentNote('-');
-      setCurrentMidi(null);
       hitStartRef.current = 0;
       nearStartRef.current = 0;
       setHitProgress(0);
@@ -175,7 +172,6 @@ export default function PitchTrainerPage() {
 
     setCurrentCents(Math.round(centsToTarget));
     setCurrentNote(res.noteName);
-    setCurrentMidi(res.midi);
 
     if (abs < bestCentsRef.current) bestCentsRef.current = abs;
 
@@ -202,6 +198,8 @@ export default function PitchTrainerPage() {
         setHitProgress(0);
       }
     }
+    // commitResult 是同组件内稳定函数；handleResult 的稳定性由 R46 的 ref 转发保证
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion]);
 
   const commitResult = useCallback((score: 0 | 0.5 | 1) => {
@@ -263,7 +261,6 @@ export default function PitchTrainerPage() {
     setCurrentIdx(0);
     setCurrentCents(null);
     setCurrentNote('-');
-    setCurrentMidi(null);
     setHitProgress(0);
     setTaskFeedback('idle');
     bestCentsRef.current = 999;

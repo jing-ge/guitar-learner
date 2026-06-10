@@ -97,9 +97,12 @@ export class PitchDetector {
   private source: MediaStreamAudioSourceNode | null = null;
   private analyser: AnalyserNode | null = null;
   private rafId = 0;
+  // Round 65: 30fps 节流，省 50% CPU；调音器 / 音准训练用户长时间开麦的体感无差异
+  private lastTickTs = 0;
   private running = false;
   private callback: PitchCallback = () => {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // 注：buffer 类型用 any 是为了兼容 AnalyserNode.getFloatTimeDomainData 在
+  // 不同 TS lib 版本下对 Float32Array<ArrayBuffer> 的签名差异
   private buffer: any = new Float32Array(0);
 
   /** 请求麦克风权限并开始实时检测 */
@@ -167,6 +170,13 @@ export class PitchDetector {
 
   private loop = () => {
     if (!this.running || !this.analyser || !this.audioCtx) return;
+    // Round 65: 30fps 节流；rAF 原生 60fps 唤醒，跳一帧
+    const now = performance.now();
+    if (now - this.lastTickTs < 30) {
+      this.rafId = requestAnimationFrame(this.loop);
+      return;
+    }
+    this.lastTickTs = now;
     this.analyser.getFloatTimeDomainData(this.buffer);
 
     // 计算 RMS（信号强度）

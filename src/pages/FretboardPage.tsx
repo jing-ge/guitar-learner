@@ -63,7 +63,6 @@ export default function FretboardPage() {
       lastFlushedRef.current = { right: 0, total: 0 };
       return () => { flushFind(false); };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // 每答 5 题自动 flush
@@ -71,7 +70,6 @@ export default function FretboardPage() {
     if (mode !== 'find') return;
     const sinceFlushed = score.total - lastFlushedRef.current.total;
     if (sinceFlushed >= 5) flushFind(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [score.total, mode]);
 
   // 探索模式下：展示全部 12 个音 / 仅自然音

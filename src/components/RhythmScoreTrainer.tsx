@@ -173,6 +173,9 @@ export default function RhythmScoreTrainer() {
     };
     const initialDelay = (ctxStart - synth.getCurrentTime()) * 1000;
     beatTimerRef.current = window.setTimeout(() => updateBeat(0), Math.max(0, initialDelay));
+    // onRecordingStop 在闭包内通过 recorder.onstop 异步调用，加入依赖会造成 useCallback 每次 onstop
+    // 改写都重建，反而失去稳定性
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bpm]);
 
   /** 录音结束 → Essentia 检测 onset → 评分 */

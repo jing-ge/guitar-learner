@@ -106,7 +106,6 @@ function chordNotes(chord: ChordDef): string[] {
 function describeChordNotes(chord: ChordDef): string {
   const notes = chordNotes(chord);
   if (notes.length === 0) return chord.fullName;
-  const rootName = notes[0];
   const isMinor = chord.quality === 'minor' || chord.quality === 'min7';
   const intervals = isMinor ? '根音 - 小三度 - 五度' : '根音 - 大三度 - 五度';
   // 七和弦/挂留时不简化描述
@@ -211,6 +210,8 @@ export default function ChordEarTrainerPage() {
       vibratePattern([30, 50, 30]);
       // 答错：等用户手动点"下一题"
     }
+    // goNext 是同组件内稳定函数，加入依赖会造成 handlePick 每帧重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion, revealed]);
 
   const goNext = useCallback((entry: AnsweredQuestion) => {

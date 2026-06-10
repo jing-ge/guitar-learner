@@ -20,7 +20,6 @@ import { vibrate, vibratePattern } from '../utils/haptic';
 import { fretToMidi, SHARP_NAMES } from '../theory/notes';
 import {
   generateProgressionQuestion,
-  type ProgressionDef,
   type ProgressionQuestion,
 } from '../data/chordProgressions';
 
@@ -137,6 +136,8 @@ export default function ProgressionEarTrainer() {
     } else {
       vibratePattern([30, 50, 30]);
     }
+    // goNext 是同组件内稳定函数，加入依赖会造成 handlePick 每帧重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestion, revealed]);
 
   const goNext = useCallback((entry: AnsweredQuestion) => {

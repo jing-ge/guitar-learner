@@ -5,7 +5,7 @@ import ChordLegend from '../components/ChordLegend';
 import SubpageHero from '../components/SubpageHero';
 import { CHORDS, type ChordDef, chordPlayablePositions, chordsByCategory } from '../theory/chords';
 import { synth } from '../audio/synth';
-import { vibrate, vibratePattern } from '../utils/haptic';
+import { vibrate } from '../utils/haptic';
 import { chordDetector, type ChordDetectEvent, type DetectorSensitivity, type DetectorState } from '../audio/chord-detector';
 import { recordSessionThrottled, recordChordMistake } from '../utils/progress';
 import { loadSavedProgressions, markPracticed, removeSavedProgression, type SavedProgression } from '../utils/saved-progressions';
@@ -31,7 +31,7 @@ type PageMode = 'browse' | 'switch' | 'detect';
 
 const MODE_META: Record<PageMode, { label: string; title: string; desc: string }> = {
   browse: {
-    label: '📖 和弦库',
+    label: '📖 浏览',
     title: '和弦库',
     desc: `${CHORDS.length}+ 常用和弦 · 按弦图 + 文字说明`,
   },
@@ -202,6 +202,9 @@ function ChordSwitchDrill() {
       beat++;
     }, interval);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    // 故意只听 running/bpm/beatsPerChord/chordList.length 重启节拍器。
+    // playChordSound / chordList[idx] 在闭包内读，切换音效或重新选歌后需要停-起一次（既有体感）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, bpm, beatsPerChord, chordList.length]);
 
   return (

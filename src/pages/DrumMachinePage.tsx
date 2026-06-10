@@ -453,7 +453,6 @@ function CustomEditor({ customs, onChange }: { customs: CustomDrumPattern[]; onC
   const updateEditing = (patch: Partial<CustomDrumPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomDrumPattern : c)); };
   const addNew = (steps: 16 | 12) => { const p = createEmptyPattern(steps); onChange([...customs, p]); setEditingId(p.id); };
   const cloneFrom = (src: DrumPattern) => { const p = clonePattern(src); onChange([...customs, p]); setEditingId(p.id); };
-  const loadFrom = (src: DrumPattern) => { if (!editing) return; updateEditing({ grid: src.grid.map(row => [...row]), name: editing.name || src.name + ' 副本' }); };
   const remove = (id: string) => { if (!confirm('删除？')) return; const next = customs.filter(c => c.id !== id); onChange(next); setEditingId(next[0]?.id ?? null); };
 
   // 按类别分组预设
@@ -588,7 +587,6 @@ function ChordProgEditor({ customs, onChange }: { customs: CustomChordProgressio
   const updateEditing = (patch: Partial<CustomChordProgression>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomChordProgression : c)); };
   const addNew = () => { const p = createEmptyProgression(); onChange([...customs, p]); setEditingId(p.id); };
   const cloneFrom = (src: ChordProgression) => { const p = cloneProgression(src); onChange([...customs, p]); setEditingId(p.id); };
-  const loadFrom = (src: ChordProgression) => { if (!editing) return; updateEditing({ chords: [...src.chords], name: editing.name || src.name + ' 副本' }); };
   const remove = (id: string) => { if (!confirm('删除？')) return; const next = customs.filter(c => c.id !== id); onChange(next); setEditingId(next[0]?.id ?? null); };
 
   // 播放逻辑
@@ -813,15 +811,7 @@ function StrumPatternEditor({ customs, onChange }: { customs: CustomChordStrumPa
   const updateEditing = (patch: Partial<CustomChordStrumPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomChordStrumPattern : c)); };
   const addNew = (beatsPerBar: 3 | 4 = 4) => { const p = createEmptyStrumPattern(beatsPerBar); onChange([...customs, p]); setEditingId(p.id); };
   const cloneFrom = (src: ChordStrumPattern) => { const p = cloneStrumPattern(src); onChange([...customs, p]); setEditingId(p.id); };
-  const loadFrom = (src: ChordStrumPattern) => { if (!editing) return; updateEditing({ events: src.events.map(e => ({ ...e })), beatsPerBar: src.beatsPerBar, name: editing.name || src.name + ' 副本' }); };
   const remove = (id: string) => { if (!confirm('删除？')) return; const next = customs.filter(c => c.id !== id); onChange(next); setEditingId(next[0]?.id ?? null); };
-
-  const DIRS: { dir: StrumDir; label: string; desc: string }[] = [
-    { dir: 'D', label: 'D', desc: '下扫全部' }, { dir: 'U', label: 'U', desc: '上扫高音' },
-    { dir: 'd', label: 'd', desc: '下扫低音' }, { dir: 'u', label: 'u', desc: '上扫轻' },
-    { dir: 'B', label: 'B', desc: '拇指根音' }, { dir: 'X', label: 'X', desc: '切音' },
-    { dir: '·', label: '·', desc: '留空' },
-  ];
 
   // 播放逻辑 - 逐事件播放
   const timerRef = useRef<number | null>(null);
@@ -1011,11 +1001,9 @@ function BassPatternEditor({ customs, onChange }: { customs: CustomBassPattern[]
   const updateEditing = (patch: Partial<CustomBassPattern>) => { if (!editing) return; onChange(customs.map(c => c.id === editing.id ? { ...c, ...patch } as CustomBassPattern : c)); };
   const addNew = (beatsPerBar: 3 | 4 = 4) => { const p = createEmptyBassPattern(beatsPerBar); onChange([...customs, p]); setEditingId(p.id); };
   const cloneFrom = (src: BassPattern) => { const p = cloneBassPattern(src); onChange([...customs, p]); setEditingId(p.id); };
-  const loadFrom = (src: BassPattern) => { if (!editing) return; updateEditing({ events: src.events.map(e => ({ ...e })), beatsPerBar: src.beatsPerBar, name: editing.name || src.name + ' 副本' }); };
   const remove = (id: string) => { if (!confirm('删除？')) return; const next = customs.filter(c => c.id !== id); onChange(next); setEditingId(next[0]?.id ?? null); };
 
   const NOTE_LABEL: Record<BassNote, string> = { R: '根', '5': '五', '3': '三', O: '高', L: '低', p5: '经', X: '休' };
-  const NOTE_DESC: Record<BassNote, string> = { R: '根音', '5': '五度', '3': '三度', O: '高八度', L: '低八度', p5: '经过音', X: '休止' };
 
   // 解析和弦ID获取根音和是否小调
   const parseChord = (chordId: string): { rootPc: number; isMinor: boolean } => {

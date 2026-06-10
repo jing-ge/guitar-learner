@@ -200,7 +200,6 @@ const RHYTHM_PATTERNS: RhythmDef[] = [
 
 // C 和弦的各弦位置（用于示范）
 const DEMO_CHORD = chordPlayablePositions(CHORDS.find(c => c.id === 'C')!.shapes[0]);
-const DEMO_LOW = DEMO_CHORD.filter(p => p.stringNum >= 4); // 低音弦（拇指）
 const DEMO_HIGH = DEMO_CHORD.filter(p => p.stringNum <= 3); // 高音弦（上扫）
 
 function RhythmPatterns() {
@@ -273,6 +272,8 @@ function RhythmPatterns() {
       if (timerRef.current) window.clearTimeout(timerRef.current);
       if (uiTimerRef.current) cancelAnimationFrame(uiTimerRef.current);
     };
+    // p.beats / p.strumDirs 是 selected 派生（同一个 SELECTED_PATTERN）；切 selected 时 effect 已重启
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, bpm, selected]);
 
   // 切换节奏型时停止
@@ -412,6 +413,8 @@ function SongChords() {
       b++;
     }, interval);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    // song.* 是 songIdx 派生（同一首歌的元数据）；切歌时 effect 已重启
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, songIdx]);
 
   const nextChordName = song.chords[(currentIdx + 1) % song.chords.length];
@@ -549,11 +552,16 @@ function ListeningQuiz() {
   };
   const next = () => { setAnswered(null); let n = target; while (n === target) n = Math.floor(Math.random() * 12); setTarget(n); };
 
-  // 记录成绩
+  // 记录成绩：用 ref 跟踪最新 score，在卸载时一次性 flush
+  // 修复：原代码 useEffect 空依赖闭包冻结 score=0/0，导致永远不记录任何成绩
+  const scoreRef = useRef(score);
+  useEffect(() => { scoreRef.current = score; }, [score]);
   useEffect(() => {
+    const startedAt = startRef.current;
     return () => {
-      if (score.total > 0) {
-        recordSession('ear-quiz', score.right, score.total, Math.round((Date.now() - startRef.current) / 1000));
+      const s = scoreRef.current;
+      if (s.total > 0) {
+        recordSession('ear-quiz', s.right, s.total, Math.round((Date.now() - startedAt) / 1000));
       }
     };
   }, []);
