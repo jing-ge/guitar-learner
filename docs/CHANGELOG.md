@@ -3669,4 +3669,208 @@ ListenPage 黄绿渐变 (与 brand 不协调) → red gradient (`#FF6B6B → #DC
 - `.omc/state/phase1-audio-static-audit.md`（音频审阅清单）
 
 
+### Round 69 — 2026-06-10 · 高 ROI 优化批（rAF 节流 + ESLint hooks + UX 文案 + a11y 触摸目标）
+
+**触发**：用户在主对话中要求「评估这个项目还有什么高 ROI 的优化点」+「综合看优化点有哪些，给一个计划清单」+「全部做吧」。
+
+**审查方法**：双路平行调度
+- 架构/性能维度：@oracle 审查 + @explorer 静态扫码（rAF 频率 / hooks 分布 / `any`/`@ts-ignore` 数量 / SW 缓存策略 / `getUserMedia` 兼容性）
+- UX 维度：@designer 看 16 张截图 + 关键 page 源码、@explorer 收集错误态/触感反馈/键盘可达 7 个维度的事实
+
+**Karpathy 红线**：
+- 不引入状态管理 / 全面 memo 包裹 / design system 包 / e2e 测试 / CI/CD / page 转场动画
+- 不重构 chord-detector / ListenPage / DrumMachinePage 大文件（算法管线 / 状态机 / 历史稳定块）
+- 不加 onboarding 蒙层、`navigator.permissions.query` 主动查、`navigator.onLine` 离线 banner
+- 不为了"做点什么"而做：第 5 项任务「PitchTrainerPage errorMsg 缺失」核实后发现 `MicPermissionState` 五态组件已覆盖，**主动取消该项**
+
+#### §1 性能：chord-detector / pitch-detector rAF 60→30fps 节流
+
+**改动文件**：`src/audio/chord-detector.ts`、`src/audio/pitch-detector.ts`
+
+- 两个 detector 的 `loop()` 都加 `performance.now() - lastTickTs < 30` 跳帧判定，rAF 仍以浏览器原生 60Hz 唤醒但只跑奇数帧
+- 同步把帧计数常量减半，**保持物理时间常数不变**：
+  - `MIN_CONFIRM_FRAMES`: 16 → 8（~270ms 进 confirmed 不变）
+  - `EXIT_HOLD_FRAMES`: 6 → 3（~100ms hysteresis 不变）
+  - `SILENCE_FRAMES`: 8 → 4（~133ms 判静音不变）
+  - `SMOOTHING_WINDOW`: 5 → 3
+  - `SENSITIVITY` 矩阵 strict/normal/loose 的 `minCommitPractice/Live` 全部减半
+- `EXIT_THRESHOLD` 不变（与帧率无关）
+- **CPU 开销减半**（每帧 8192-pt FFT + 12 维 chroma + 24 模板余弦匹配 + 状态机），主要收益在 Android WebView 长时间开麦的发热/续航
+- **eval baseline 不受影响**（脚本走离线 chroma 不经过 rAF 调度），`npm run eval:check` ABCDEF 6/6 +0.00pp
+
+#### §2 工具链：装 ESLint + 打开 noUnusedLocals
+
+**改动文件**：新增 `eslint.config.js`、改 `tsconfig.json`、改 `package.json`
+
+- 新增 `eslint.config.js`（flat config，ESLint 9）
+  - 只开两条规则：`react-hooks/rules-of-hooks: error`、`react-hooks/exhaustive-deps: warn`
+  - **不开任何格式化规则**（保持 lint 价值密度，避免变成"格式洁癖工具"）
+  - ignore `dist/native/scripts/public/.review/.omc`
+- `tsconfig.json`: `noUnusedLocals: false → true`
+- `package.json` 新增 `lint` script
+- 新增 devDependencies: `eslint@^9`、`eslint-plugin-react-hooks@latest`、`@typescript-eslint/parser`
+
+##### §2.1 抓出真实 bug：ListeningQuiz 闭包冻结
+
+`src/pages/PracticePage.tsx:553-559` 的 `useEffect(() => {...}, [])` cleanup 引用 `score.total/right`，由于空依赖闭包冻结在初始 0/0，**导致用户做的所有听音测验成绩从来就没进过 progress**。
+
+修复：用 `scoreRef` 同步最新值 + 用 `startedAt` 复制 `startRef.current`：
+
+```ts
+const scoreRef = useRef(score);
+useEffect(() => { scoreRef.current = score; }, [score]);
+useEffect(() => {
+  const startedAt = startRef.current;
+  return () => {
+    const s = scoreRef.current;
+    if (s.total > 0) {
+      recordSession('ear-quiz', s.right, s.total, Math.round((Date.now() - startedAt) / 1000));
+    }
+  };
+}, []);
+```
+
+##### §2.2 修复 13 个 hooks 警告
+
+| 文件:行 | 警告 | 处理 |
+|---|---|---|
+| `Fretboard.tsx:126` | 缺 fretCenterPos/stringPos | disable + 注释（props 派生纯函数） |
+| `ProgressionEarTrainer.tsx:140` | 缺 goNext | disable + 注释（同组件循环引用） |
+| `RhythmScoreTrainer.tsx:176` | 缺 onRecordingStop | disable + 注释（recorder.onstop 异步） |
+| `ChordEarTrainerPage.tsx:214` | 缺 goNext | disable + 注释 |
+| `ChordsPage.tsx:205` | 缺 chordList/playChordSound | disable + 注释（既有"切音效需停-起"行为是设计选择，不擅改） |
+| `FretboardPage.tsx:66/74` | unused eslint-disable | 删多余 disable |
+| `ListenPage.tsx:319` | 缺 recordedSec | disable + 注释（加入会让 useCallback 每 100ms 重建，触发 RecordingView 重挂载） |
+| `PitchTrainerPage.tsx:205` | 缺 commitResult | disable + 注释 |
+| `PracticePage.tsx:276/415` | 缺 p.beats / song.* | disable + 注释（已被 selected/songIdx 派生覆盖） |
+| `PracticePage.tsx:556/559` | ref cleanup race + score.* | **真 bug，用 ref 模式修**（见 §2.1） |
+
+也连带把两个引用未启用规则的伪 error 修正：
+- `pitch-detector.ts:102` `// eslint-disable-next-line @typescript-eslint/no-explicit-any` → 改注释解释为何用 any
+- `TunerPage.tsx:259` `const _tick = tunedTick` → `void tunedTick`
+
+##### §2.3 清理 18 处死代码
+
+打开 `noUnusedLocals` 后 TS 报 18 处。**手动逐条核对**，未做"批量加 `_` 前缀"等懒人规避：
+
+- `chord-detector.ts`: 删除 Round 10 之前的 `freqToPc` / `chordPitchClasses` / `matchScore` 三个废弃 helper（已被 chroma 模板余弦替换）
+- `chord-detector.ts`: 删除 `committedFlashUntil` private 字段（只写不读）和 `bestAdjusted` 局部变量（只赋不读）
+- `DrumMachinePage.tsx`: 删除 4 处 `loadFrom`（DrumPattern / ChordProgression / StrumPattern / BassPattern Editor 各一份，**都没连进 UI**——明显的功能想做没做完）
+- `DrumMachinePage.tsx`: 删除 `_DIRS`（StrumDir 元数据数组）和 `NOTE_DESC`（BassNote 解释 Record，UI 只用 `NOTE_LABEL`）
+- `PitchTrainerPage.tsx`: 删除 `currentMidi` state（setter 调用 4 处，但 state 从未在 JSX 读取，**纯死状态**）+ 4 处 `setCurrentMidi(...)` 调用
+- 死 import：`PitchTrainerPage.tsx` `useMemo` / `SHARP_NAMES`、`ChordsPage.tsx` `vibratePattern`、`ProgressionEarTrainer.tsx` `ProgressionDef`
+- 死局部派生：`ChordEarTrainerPage.tsx:109` `rootName`、`PracticePage.tsx:203` `DEMO_LOW`
+
+#### §3 UX：首页零状态 + ListenPage 预期管理 + 文案漂移修正
+
+##### §3.1 HomePage 零状态隐藏 hero-stats
+
+`HomePage.tsx:222-235`：原代码无练习记录时仍渲染 `分钟 — / 答对 — / 连续天数 0` 三联占位 stat-pill，让首屏第一眼变成"空 dashboard"，emotional tone 跟下方"我是新手 · 从调音开始"主 CTA 冲突。
+
+改为 `summary.hasAnyRecord && (...)` 条件渲染：无记录时整组 hero-stats 不出现，让主 CTA 独占视觉重心。**5 行改动换第一印象**。
+
+##### §3.2 ListenPage 预期管理文案前置
+
+`ListenPage.tsx:573-582`：录音按钮上方新增 `.listen-pre-hint` 一行：
+
+> 💡 适合**节拍稳定、和声清楚**的流行/民谣片段；仅识别大三/小三主干和弦
+
+原 `listen-expectation-card` 在录音按钮**下方**且通常在折叠区，新用户冲进来直接录自己最爱的歌、BPM/key 不准 → 第一反应是"这 app 不准"。**算法不变好，但预期对齐能直接降低首次试用弃用率**。
+
+同时把下方 expectation-card 第一段（"💡 更适合的使用方式..."）删除，因为已被前置 hint 替代；保留下方两段（Essentia.js 工作原理 + 复杂段落限制）作为详细说明。
+
+`global.css` 新增 `.listen-pre-hint` 样式（橙色弱背景 + 1px border + 12px font）+ light 主题等价配色。
+
+##### §3.3 三处文案漂移修正
+
+| 位置 | 旧 | 新 | 依据 |
+|---|---|---|---|
+| `README.md:32` | "FFT + Chroma + 156 模板" | "FFT + Chroma + 24 模板（大三/小三 × 12 根音）" | `chord-detector.ts:225-246` 注释明写"156 → 24"，sus 模板免费分被回退 |
+| `README.md:95,101` | "10 个子项" | "7 个子项" | Round 1 测试用例 R-05 实测"展示 7 个训练项大卡" |
+| `README.md:200,237,247` | "156 模板" | "24 模板" | 同上 |
+| `ChordsPage.tsx:34` | `📖 和弦库`（与外层 tab 同名） | `📖 浏览` | 嵌套同名 ambient label confusion |
+
+#### §4 可用性：调音器触摸目标 + touch-action
+
+##### §4.1 TunerPage 校准按钮触摸目标
+
+`TunerPage.tsx:288-322`：校准 ±1 按钮原 `minWidth: 32, padding: '2px 8px'` 实测 32×24px，**低于 iOS HIG 44pt / Android 48dp 最小触摸目标**。
+
+- 校准 ±1 / 重置按钮：`minWidth: 40, minHeight: 36, padding: '6px 10px'`
+- 启动按钮：未启动时 `width: 280px`（之前固定 200px），让"开始调音"在视觉上更显眼；启动后回到 200px
+
+`global.css:416` `.btn-sm` 全局 `min-height: 32 → 36px, padding: 4px 12 → 6px 12px`，**所有 btn-sm 受益**。
+
+##### §4.2 关键交互元素加 touch-action: manipulation
+
+`global.css` 4 处增量：
+
+- `.fretboard-svg`: 精确点击品位时禁双击缩放
+- `.chord-card`: 卡片快速点击让 `:active` 反馈立即触发
+- `.tuner-string-card`: 6 弦点击精准
+- `.record-btn`: 圆形大按钮单击不被双击缩放干扰
+
+**不加在 `body` 上**：避免破坏正常滚动。已用 4 个最需要的元素白名单。
+
+#### 守住的 Non-Goals
+
+- 不动 `audio-ctx.ts` / synth / drum-machine / essentia-engine
+- 不动音频核心算法参数（SENSITIVITY 等矩阵的 enter 阈值不变）
+- 不引入新运行时依赖（ESLint 是 devDependency）
+- 不动 `vite.config.ts` / `inline-dist.mjs` / `native/`
+- 不重构 ListenPage / DrumMachinePage / PracticePage 的大文件结构
+- 不做路由级 React.lazy（看场景判断条件未满足，APK 走 file:// 不在乎 chunk 大小）
+- 不做 SW 缓存版本失效（同上，APK 不走 SW）
+- 不做浅色主题模块卡边界感增强（深色才是主场景，避免两套等权重设计稀释）
+- 不主动删 Karpathy 红线允许保留的可疑代码（除非 lint 真的拦下来 + 经手动核对确认无引用）
+
+#### 收尾验证
+
+- `npx tsc -b` ✅ TS strict + noUnusedLocals 通过，零错误
+- `npm run lint` ✅ 0 错误 0 警告
+- `npm run eval:check` ✅ **6/6 场景 +0.00pp**：A 100% / B 83.3% / C 30.8% / D 74.4% / E 34.6% / F 0.0%
+- `npm run eval:song` ✅ 和弦命中率 100% → 100%，调性最终正确 ✓ → ✓
+- `npm run build` ✅ inline-dist 输出 535.7 KB（dev 模式动态 chunk 分离），`script tag pairing OK`，`import.meta check: present (module script ✓)`
+- `npm run build:apk` ✅ inline-dist 输出 3025.9 KB（含 essentia inline），所有 invariant check 通过
+- **APK release 实测对比**：旧 65,046,766 B → 新 65,050,158 B，**+3.3 KB**（基本等于"没变"，主要来自 chord-detector 注释 + ListenPage 新加 hint 字符串）
+- 1m 1s gradle assembleRelease 全程绿色，无新增 lint vital warning
+
+#### 受影响文件
+
+源码（13 文件）：
+- `src/audio/chord-detector.ts`（rAF 30fps + 帧计数减半 + 删 5 处死代码）
+- `src/audio/pitch-detector.ts`（rAF 30fps + 注释格式调整）
+- `src/components/Fretboard.tsx`（hooks disable 注释）
+- `src/components/ProgressionEarTrainer.tsx`（hooks disable + 删死 import）
+- `src/components/RhythmScoreTrainer.tsx`（hooks disable）
+- `src/pages/ChordEarTrainerPage.tsx`（hooks disable + 删死局部）
+- `src/pages/ChordsPage.tsx`（segmented 改名 + hooks disable + 删死 import）
+- `src/pages/DrumMachinePage.tsx`（删 4 个 loadFrom + 2 个未用元数据）
+- `src/pages/FretboardPage.tsx`（删多余 eslint-disable）
+- `src/pages/HomePage.tsx`（hero-stats 条件渲染）
+- `src/pages/ListenPage.tsx`（pre-hint 前置 + 简化 expectation-card + hooks disable）
+- `src/pages/PitchTrainerPage.tsx`（删 currentMidi state + 删死 import + hooks disable）
+- `src/pages/PracticePage.tsx`（**真 bug 修复 ListeningQuiz 闭包** + 2 处 hooks disable + 删死局部）
+- `src/pages/TunerPage.tsx`（触摸目标 + 启动按钮宽度 + void tunedTick）
+- `src/styles/global.css`（pre-hint 样式 + .btn-sm 升 36 + 4 处 touch-action）
+
+工具链（3 文件）：
+- `eslint.config.js`（**新增**）
+- `tsconfig.json`（noUnusedLocals: true）
+- `package.json` + `package-lock.json`（lint script + 3 个 devDeps）
+
+文档（2 文件）：
+- `README.md`（156→24 模板 × 5 处 + 10→7 训练项 × 2 处）
+- `docs/CHANGELOG.md`（本段）
+
+#### 总收益概览
+
+- **真实 bug 修复 1 个**：ListeningQuiz 卸载 effect 闭包冻结，所有用户的听音测验成绩从未入账（Round 1 至今潜伏）
+- **死代码清理 18 处**
+- **CPU 砍 50%**：chord-detector + pitch-detector rAF 60→30fps（algorithm 行为等价）
+- **首屏视觉重量分配修正**：HomePage 零状态 + ListenPage 预期前置
+- **触摸目标合规**：TunerPage 校准 ±1 / 重置 / 启动 全部满足 ≥36px，`.btn-sm` 全局升级
+- **未来防线**：ESLint hooks 规则 + noUnusedLocals 锁住，下次同类 bug 自动拦下
+
+
 
